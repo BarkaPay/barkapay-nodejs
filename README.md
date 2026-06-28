@@ -16,13 +16,13 @@ Node **18+** (for the global `fetch`).
 ## Install
 
 ```bash
-npm install @barkapay/payhub
+npm install barkapay-payhub
 ```
 
 ## Quick start
 
 ```ts
-import { PayHub } from '@barkapay/payhub';
+import { PayHub } from 'barkapay-payhub';
 
 const payhub = new PayHub({
   apiKey: 'pk_live_xxx:sk_live_yyy', // the "key_id:secret" you copy from the dashboard
@@ -47,7 +47,7 @@ console.log(payment.publicId, payment.status);
 CommonJS works too:
 
 ```js
-const { PayHub } = require('@barkapay/payhub');
+const { PayHub } = require('barkapay-payhub');
 ```
 
 ## Payments
@@ -96,7 +96,7 @@ await payhub.me();
 Verify the `PayHub-Signature` header against the **raw** request body:
 
 ```ts
-import { parseWebhook, SignatureVerificationError } from '@barkapay/payhub';
+import { parseWebhook, SignatureVerificationError } from 'barkapay-payhub';
 
 try {
   const event = parseWebhook(rawBody, signatureHeader, endpointSecret /* whsec_… */);
@@ -135,7 +135,7 @@ Catch everything from the SDK with `PayHubError`. Configuration mistakes throw
 `ConfigurationError`; webhook failures throw `SignatureVerificationError`.
 
 ```ts
-import { PayHubError, ValidationError } from '@barkapay/payhub';
+import { PayHubError, ValidationError } from 'barkapay-payhub';
 
 try {
   await payhub.payments.create({ /* … */ });

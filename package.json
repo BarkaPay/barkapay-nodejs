@@ -1,6 +1,6 @@
 {
-  "name": "@barkapay/payhub",
-  "version": "0.1.0",
+  "name": "barkapay-payhub",
+  "version": "1.0.0",
   "description": "Official Node.js / TypeScript SDK for the PayHub payments API — mobile money & crypto, one API across countries.",
   "license": "MIT",
   "author": "BarkaPay (PayHub)",

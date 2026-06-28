@@ -1,4 +1,4 @@
-import { ConflictError, PayHub, PayHubError } from '@barkapay/payhub';
+import { ConflictError, PayHub, PayHubError } from 'barkapay-payhub';
 
 const payhub = new PayHub({
   apiKey: process.env.PAYHUB_API_KEY ?? 'pk_live_xxx:sk_live_yyy',

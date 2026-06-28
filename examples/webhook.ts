@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 
-import { SignatureVerificationError, parseWebhook } from '@barkapay/payhub';
+import { SignatureVerificationError, parseWebhook } from 'barkapay-payhub';
 
 const SECRET = process.env.PAYHUB_WEBHOOK_SECRET ?? 'whsec_xxx';
 
