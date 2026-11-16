@@ -91,13 +91,13 @@ jobs:
       - name: Pack
         run: |
           npm pack --ignore-scripts
-          tar -tzf barkapay-payhub-*.tgz | sort
+          tar -tzf barkapay-*.tgz | sort
 
       - name: Upload the tarball
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package
-          path: barkapay-payhub-*.tgz
+          path: barkapay-*.tgz
           if-no-files-found: error
           retention-days: 7
 
@@ -135,7 +135,7 @@ jobs:
         run: |
           mkdir consumer && cd consumer
           npm init --yes > /dev/null
-          npm install --no-audit --no-fund ../package/barkapay-payhub-*.tgz
+          npm install --no-audit --no-fund ../package/barkapay-*.tgz
           # Zero runtime dependencies: the SDK must be the only thing installed.
           test "$(ls node_modules | wc -l)" -eq 1
           cp -R "$GITHUB_WORKSPACE/smoke" .

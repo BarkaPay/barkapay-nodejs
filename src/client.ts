@@ -21,7 +21,7 @@ const DEFAULT_TIMEOUT_MS = 40_000;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES_CEILING = 10;
 
-export interface PayHubOptions {
+export interface BarkaPayOptions {
   /**
    * The merchant key as `"key_id:secret"` (what you copy from the dashboard).
    * Do NOT prefix it with `Bearer` — the SDK does that. An accidental `Bearer `
@@ -58,8 +58,8 @@ export interface PayHubOptions {
  * Entry point to the barkapay API.
  *
  * ```ts
- * const payhub = new PayHub({ apiKey: process.env.BARKAPAY_API_KEY, country: 'bf' });
- * const payment = await payhub.payments.create({
+ * const barkapay = new BarkaPay({ apiKey: process.env.BARKAPAY_API_KEY, country: 'bf' });
+ * const payment = await barkapay.payments.create({
  *   operator: 'ORANGE',
  *   phone_number: '74000000', // national format, without the country code
  *   amount: 10000,
@@ -68,7 +68,7 @@ export interface PayHubOptions {
  * });
  * ```
  */
-export class PayHub {
+export class BarkaPay {
   static readonly VERSION = VERSION;
 
   readonly payments: Payments;
@@ -79,10 +79,10 @@ export class PayHub {
 
   readonly #api: ApiClient;
 
-  constructor(options: PayHubOptions) {
+  constructor(options: BarkaPayOptions) {
     if (typeof options !== 'object' || options === null) {
       throw new ConfigurationError(
-        'Pass an options object: new PayHub({ apiKey, country }).',
+        'Pass an options object: new BarkaPay({ apiKey, country }).',
       );
     }
 
@@ -124,12 +124,12 @@ export class PayHub {
 
   /** Safe summary for `JSON.stringify` — never includes the API key. */
   toJSON(): Record<string, unknown> {
-    return { sdk: 'barkapay-payhub', version: VERSION, ...this.#api.toJSON() };
+    return { sdk: 'barkapay', version: VERSION, ...this.#api.toJSON() };
   }
 
   /** Safe summary for `console.log` / `util.inspect` — never includes the API key. */
   [Symbol.for('nodejs.util.inspect.custom')](): string {
-    return `PayHub ${JSON.stringify(this.toJSON())}`;
+    return `BarkaPay ${JSON.stringify(this.toJSON())}`;
   }
 }
 
@@ -140,7 +140,7 @@ export class PayHub {
  */
 const CREDENTIAL_PATTERN = /^[\x21-\x7e]+$/;
 
-function buildAuthorization(options: PayHubOptions): string {
+function buildAuthorization(options: BarkaPayOptions): string {
   let token: string | null = null;
 
   if (typeof options.apiKey === 'string' && options.apiKey.trim() !== '') {
@@ -253,7 +253,7 @@ function warnInsecureBaseUrl(): void {
   insecureBaseUrlWarned = true;
   if (typeof process !== 'undefined' && typeof process.emitWarning === 'function') {
     process.emitWarning(
-      'barkapay-payhub: `baseUrl` uses plain http — the API key will be sent unencrypted. Use https outside of local testing.',
+      'barkapay: `baseUrl` uses plain http — the API key will be sent unencrypted. Use https outside of local testing.',
       { code: 'BARKAPAY_INSECURE_BASE_URL' },
     );
   }
@@ -286,5 +286,5 @@ function buildUserAgent(): string {
     typeof process !== 'undefined' && typeof process.versions?.node === 'string'
       ? ` node/${process.versions.node}`
       : '';
-  return `barkapay-payhub-node/${VERSION}${node}`;
+  return `barkapay-node/${VERSION}${node}`;
 }

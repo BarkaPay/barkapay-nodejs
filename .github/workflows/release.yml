@@ -1,34 +1,42 @@
 name: Release
 
-# Publishes `barkapay-payhub` to npm when a version tag (v*) is pushed.
+# Publishes `barkapay` to npm when a version tag (v*) is pushed.
 #
 # Authentication: npm TRUSTED PUBLISHING (OIDC). No npm token is stored in this
 # repository: npm trusts this exact workflow file in this exact repository and
 # hands it a short-lived credential for one publish. The version is published
 # with a provenance attestation.
 #
-# ── One-time setup on npmjs.com (package owner) ──────────────────────────────
-#   npmjs.com → Packages → barkapay-payhub → Settings → "Trusted Publisher"
+# ── First release of `barkapay` (2.0.0): NPM_TOKEN ──────────────────────────
+#   npm only lets you attach a trusted publisher to a package that already
+#   exists, so the very first version goes out with a token:
+#   npmjs.com → Access Tokens → Generate New Token → Granular Access Token
+#       Expiration       : 7 days
+#       Packages/scopes  : Read and write — All packages (the package does
+#                          not exist yet, it cannot be selected)
+#       Organizations    : No access
+#       "Bypass two-factor authentication": checked (CI cannot answer 2FA)
+#   then GitHub → BarkaPay/barkapay-nodejs → Settings → Secrets and variables
+#   → Actions → New repository secret, name NPM_TOKEN.
+#   The repository must already be named `barkapay-nodejs` when the tag is
+#   pushed: the provenance check compares it with `repository.url`.
+#
+# ── Every release after that: trusted publishing (OIDC) ─────────────────────
+#   npmjs.com → Packages → barkapay → Settings → "Trusted Publisher"
 #   → "Select your publisher": GitHub Actions, then:
 #       Organization or user : BarkaPay          (case-sensitive)
-#       Repository           : payhub-nodejs
+#       Repository           : barkapay-nodejs
 #       Workflow filename    : release.yml       (file name only, with .yml)
 #       Environment name     : (leave empty)
 #       Allowed actions      : enable `npm publish` (direct publishing);
 #                              leave `npm dist-tag` disabled.
-#   A new trusted publisher must complete its first publish within 2 days,
-#   otherwise it expires: create it right before tagging.
+#   Then revoke the token on npmjs.com and delete the NPM_TOKEN secret: npm
+#   tries OIDC first and falls back on NPM_TOKEN only when it exists. With
+#   neither, the publish step fails with ENEEDAUTH and nothing is published.
 #   Requirements (met below): GitHub-hosted runner, `id-token: write`,
 #   Node >= 22.14 and npm >= 11.5.1, and `repository.url` in package.json
 #   pointing at this repository.
 #   Docs: https://docs.npmjs.com/trusted-publishers
-#
-# ── Fallback: classic token ──────────────────────────────────────────────────
-#   If no trusted publisher is configured, npm falls back on the token in the
-#   repository secret NPM_TOKEN, when it exists (a granular access token with
-#   read/write on `barkapay-payhub` only). npm tries OIDC first, so the secret
-#   can simply be deleted once trusted publishing works. With neither, the
-#   publish step fails with ENEEDAUTH and nothing is published.
 #
 # ── Cutting a release ────────────────────────────────────────────────────────
 #   Bump the version (package.json, package-lock.json, src/version.ts), update
@@ -124,14 +132,14 @@ jobs:
       - name: Pack
         run: |
           npm pack --ignore-scripts
-          tar -tzf barkapay-payhub-*.tgz | sort
-          sha256sum barkapay-payhub-*.tgz
+          tar -tzf barkapay-*.tgz | sort
+          sha256sum barkapay-*.tgz
 
       - name: Upload the tarball
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package
-          path: barkapay-payhub-*.tgz
+          path: barkapay-*.tgz
           if-no-files-found: error
           retention-days: 30
 
@@ -175,7 +183,7 @@ jobs:
           else
             echo "NPM_TOKEN secret: absent — trusted publishing (OIDC) is the only way in."
           fi
-          sha256sum barkapay-payhub-*.tgz
-          npm publish ./barkapay-payhub-*.tgz --provenance --access public
+          sha256sum barkapay-*.tgz
+          npm publish ./barkapay-*.tgz --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

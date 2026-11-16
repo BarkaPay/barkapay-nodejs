@@ -122,7 +122,7 @@ async function run(sdk, label, packageVersion) {
     ApiError,
     NetworkError,
     NotFoundError,
-    PayHub,
+    BarkaPay,
     ServiceUnavailableError,
     SignatureVerificationError,
     VERSION,
@@ -132,16 +132,16 @@ async function run(sdk, label, packageVersion) {
   } = sdk;
 
   // --- the module itself -----------------------------------------------------
-  assert.equal(typeof PayHub, 'function', 'PayHub is exported');
+  assert.equal(typeof BarkaPay, 'function', 'BarkaPay is exported');
   assert.equal(VERSION, packageVersion, 'VERSION matches the installed package.json');
-  assert.equal(PayHub.VERSION, packageVersion);
+  assert.equal(BarkaPay.VERSION, packageVersion);
   assert.equal(WEBHOOK_SIGNATURE_HEADER, 'Barkapay-Signature');
   assert.equal(typeof globalThis.fetch, 'function', 'this Node has a global fetch');
 
   const { server, seen, hits, baseUrl } = await startServer();
 
   try {
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: API_KEY,
       country: 'bf',
       baseUrl,
@@ -154,16 +154,13 @@ async function run(sdk, label, packageVersion) {
     const first = seen[0];
     assert.equal(first.headers.authorization, `Bearer ${API_KEY}`);
     assert.equal(first.headers.accept, 'application/json');
-    assert.match(
-      first.headers['user-agent'],
-      /^barkapay-payhub-node\/\d+\.\d+\.\d+ node\//,
-    );
+    assert.match(first.headers['user-agent'], /^barkapay-node\/\d+\.\d+\.\d+ node\//);
     assert.match(first.headers['x-request-id'], /^[0-9a-f-]{36}$/);
 
     // Send `ping()` to another route of the stand-in server, through the REAL
     // global fetch and with the init the SDK built (signal, redirect mode…).
     const routedTo = (route, options = {}) =>
-      new PayHub({
+      new BarkaPay({
         apiKey: API_KEY,
         country: 'bf',
         baseUrl,
@@ -196,7 +193,7 @@ async function run(sdk, label, packageVersion) {
 
     // --- a money-moving POST is never replayed on a 503 ----------------------
     const refused = await rejection(
-      new PayHub({
+      new BarkaPay({
         apiKey: API_KEY,
         country: 'bf',
         baseUrl,
@@ -279,7 +276,7 @@ async function run(sdk, label, packageVersion) {
   assert.throws(() => parseWebhook(JSON.parse(body), header, secret), /RAW request body/);
 
   console.log(
-    `smoke ok — ${label} — node ${process.versions.node} — barkapay-payhub ${VERSION}`,
+    `smoke ok — ${label} — node ${process.versions.node} — barkapay ${VERSION}`,
   );
 }
 

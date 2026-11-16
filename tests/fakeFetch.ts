@@ -1,15 +1,15 @@
-import type { FetchFn, PayHubRequestInit, PayHubResponse } from '../src/http';
+import type { FetchFn, BarkaPayRequestInit, BarkaPayResponse } from '../src/http';
 
 export interface RecordedCall {
   url: string;
-  init: PayHubRequestInit;
+  init: BarkaPayRequestInit;
 }
 
 /** A queued reply: a response, an error to throw, or a function that decides per call. */
 export type Reply =
-  | PayHubResponse
+  | BarkaPayResponse
   | Error
-  | ((url: string, init: PayHubRequestInit) => Promise<PayHubResponse>);
+  | ((url: string, init: BarkaPayRequestInit) => Promise<BarkaPayResponse>);
 
 function headersOf(headers: Record<string, string>): {
   get(name: string): string | null;
@@ -23,7 +23,7 @@ export function jsonResponse(
   status: number,
   body: unknown,
   headers: Record<string, string> = {},
-): PayHubResponse {
+): BarkaPayResponse {
   return textResponse(status, JSON.stringify(body), {
     'content-type': 'application/json',
     ...headers,
@@ -35,12 +35,12 @@ export function textResponse(
   status: number,
   text: string,
   headers: Record<string, string> = {},
-): PayHubResponse {
+): BarkaPayResponse {
   return { status, headers: headersOf(headers), text: () => Promise.resolve(text) };
 }
 
 /** A success envelope, as the API wraps every 2xx answer. */
-export function ok(data: unknown, meta?: unknown, status = 200): PayHubResponse {
+export function ok(data: unknown, meta?: unknown, status = 200): BarkaPayResponse {
   return jsonResponse(status, {
     status: 'success',
     code: status === 201 ? 'resource_created' : 'success',

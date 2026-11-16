@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { ApiError, ConfigurationError, NetworkError } from './errors';
-import type { FetchFn, PayHubRequestInit, PayHubResponse } from './http';
+import type { FetchFn, BarkaPayRequestInit, BarkaPayResponse } from './http';
 import { normalizeCountry } from './path';
 import { decodeEnvelope, isRecord } from './util';
 
@@ -220,7 +220,7 @@ export class ApiClient {
       }, this.#timeoutMs);
     });
 
-    const init: PayHubRequestInit = {
+    const init: BarkaPayRequestInit = {
       method,
       headers: { ...headers },
       signal: controller.signal,
@@ -439,7 +439,7 @@ interface ByteReader {
   cancel(reason?: unknown): Promise<void>;
 }
 
-function streamOf(response: PayHubResponse): ByteReader | null {
+function streamOf(response: BarkaPayResponse): ByteReader | null {
   const body: unknown = (response as { body?: unknown }).body;
   if (typeof body !== 'object' || body === null) {
     return null;
@@ -458,7 +458,7 @@ function tooLarge(): Error {
  * `fetch` response exposes `body`), and after the fact for a minimal
  * transport that only implements `text()`.
  */
-async function readCapped(response: PayHubResponse): Promise<string> {
+async function readCapped(response: BarkaPayResponse): Promise<string> {
   const declared = readHeader(response, 'content-length');
   if (
     declared !== null &&
@@ -504,7 +504,7 @@ async function readCapped(response: PayHubResponse): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-function readHeader(response: PayHubResponse, name: string): string | null {
+function readHeader(response: BarkaPayResponse, name: string): string | null {
   const headers: unknown = response.headers;
   try {
     if (typeof headers === 'object' && headers !== null) {

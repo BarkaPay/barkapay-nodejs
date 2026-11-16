@@ -49,7 +49,7 @@ that is how Node 18 support is verified even though the dev tools no longer run 
 3. Tag the merge commit and push the tag:
 
    ```bash
-   git tag -a v1.1.0 -m "v1.1.0" && git push origin v1.1.0
+   git tag -a v2.0.0 -m "v2.0.0" && git push origin v2.0.0
    ```
 
 The `Release` workflow checks that the tag matches `package.json` and sits on

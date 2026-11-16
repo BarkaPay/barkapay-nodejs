@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, PayHub } from '../src/index';
+import { ApiError, BarkaPay } from '../src/index';
 import { FakeFetch, jsonResponse, ok, textResponse, type Reply } from './fakeFetch';
 
 /** A link exactly as GET /{cc}/v1/payments/links/{id} returns it. */
@@ -35,20 +35,20 @@ const BASE = 'https://hub.barkapay.com/bf/v1/payments/links';
 
 function client(replies: Reply[]) {
   const http = new FakeFetch(replies);
-  const payhub = new PayHub({
+  const barkapay = new BarkaPay({
     apiKey: 'k_id:s_secret',
     country: 'bf',
     maxRetries: 0,
     fetch: http.fn,
   });
-  return { payhub, http };
+  return { barkapay, http };
 }
 
 describe('paymentLinks', () => {
   it('create → POST /payments/links, hydrated', async () => {
-    const { payhub, http } = client([ok({ payment_link: LINK }, undefined, 201)]);
+    const { barkapay, http } = client([ok({ payment_link: LINK }, undefined, 201)]);
 
-    const link = await payhub.paymentLinks.create({
+    const link = await barkapay.paymentLinks.create({
       title: 'Facture #1234',
       amount: { type: 'fixed', value: 25000 },
       order: { id: 'INV-1234' },
@@ -99,7 +99,7 @@ describe('paymentLinks', () => {
   });
 
   it('list → GET /payments/links with filters and pagination (no last_page)', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok(
         { payment_links: [LINK, { ...LINK, public_id: 'PL-2', status: 'paid' }] },
         {
@@ -110,7 +110,7 @@ describe('paymentLinks', () => {
       ),
     ]);
 
-    const page = await payhub.paymentLinks.list({
+    const page = await barkapay.paymentLinks.list({
       status: 'active,paid',
       page: 2,
       per_page: 2,
@@ -126,37 +126,37 @@ describe('paymentLinks', () => {
   });
 
   it('list → works without arguments', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment_links: [] }, { current_page: 1, per_page: 25, total: 0 }),
     ]);
 
-    const page = await payhub.paymentLinks.list();
+    const page = await barkapay.paymentLinks.list();
     expect(http.lastCall?.url).toBe(BASE);
     expect(page.data).toEqual([]);
   });
 
   it('get → GET /payments/links/{id} by PL- id or by slug', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment_link: LINK }),
       ok({ payment_link: LINK }),
     ]);
 
-    const byId = await payhub.paymentLinks.get(LINK.public_id);
+    const byId = await barkapay.paymentLinks.get(LINK.public_id);
     expect(http.lastCall?.url).toBe(`${BASE}/${LINK.public_id}`);
     expect(byId.slug).toBe('9j32HfkT2mQx4');
 
-    await payhub.paymentLinks.get('9j32HfkT2mQx4', { country: 'sn' });
+    await barkapay.paymentLinks.get('9j32HfkT2mQx4', { country: 'sn' });
     expect(http.lastCall?.url).toBe(
       'https://hub.barkapay.com/sn/v1/payments/links/9j32HfkT2mQx4',
     );
   });
 
   it('update → PATCH /payments/links/{id}, nulls preserved to clear fields', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment_link: { ...LINK, title: 'New title' } }),
     ]);
 
-    const link = await payhub.paymentLinks.update(LINK.public_id, {
+    const link = await barkapay.paymentLinks.update(LINK.public_id, {
       title: 'New title',
       description: null,
       expires_at: null,
@@ -175,11 +175,11 @@ describe('paymentLinks', () => {
   });
 
   it('cancel → DELETE /payments/links/{id}', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment_link: { ...LINK, status: 'canceled' } }),
     ]);
 
-    const link = await payhub.paymentLinks.cancel(LINK.public_id);
+    const link = await barkapay.paymentLinks.cancel(LINK.public_id);
 
     expect(http.lastCall?.init.method).toBe('DELETE');
     expect(http.lastCall?.url).toBe(`${BASE}/${LINK.public_id}`);
@@ -188,23 +188,23 @@ describe('paymentLinks', () => {
   });
 
   it('pause / resume → POST /payments/links/{id}/pause|resume', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment_link: { ...LINK, status: 'paused' } }),
       ok({ payment_link: LINK }),
     ]);
 
-    const paused = await payhub.paymentLinks.pause(LINK.public_id);
+    const paused = await barkapay.paymentLinks.pause(LINK.public_id);
     expect(http.lastCall?.init.method).toBe('POST');
     expect(http.lastCall?.url).toBe(`${BASE}/${LINK.public_id}/pause`);
     expect(paused.status).toBe('paused');
 
-    const resumed = await payhub.paymentLinks.resume(LINK.public_id);
+    const resumed = await barkapay.paymentLinks.resume(LINK.public_id);
     expect(http.lastCall?.url).toBe(`${BASE}/${LINK.public_id}/resume`);
     expect(resumed.status).toBe('active');
   });
 
   it('listPayments → GET /payments/links/{id}/payments with the link summary', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok(
         {
           payment_link: {
@@ -228,7 +228,7 @@ describe('paymentLinks', () => {
       ),
     ]);
 
-    const page = await payhub.paymentLinks.listPayments(LINK.public_id, {
+    const page = await barkapay.paymentLinks.listPayments(LINK.public_id, {
       status: 'SUCCESSFUL',
       from_date: '2026-11-01',
       to_date: '2026-11-30',
@@ -257,27 +257,27 @@ describe('paymentLinks', () => {
   it('never replays a link write on a network failure or a 5xx, only on a 429', async () => {
     const reset = new Error('socket hang up');
     const writes = [
-      (p: PayHub) => p.paymentLinks.create({ title: 't', amount: { type: 'open' } }),
-      (p: PayHub) => p.paymentLinks.update('PL-1', { title: 't' }),
-      (p: PayHub) => p.paymentLinks.cancel('PL-1'),
-      (p: PayHub) => p.paymentLinks.pause('PL-1'),
-      (p: PayHub) => p.paymentLinks.resume('PL-1'),
+      (p: BarkaPay) => p.paymentLinks.create({ title: 't', amount: { type: 'open' } }),
+      (p: BarkaPay) => p.paymentLinks.update('PL-1', { title: 't' }),
+      (p: BarkaPay) => p.paymentLinks.cancel('PL-1'),
+      (p: BarkaPay) => p.paymentLinks.pause('PL-1'),
+      (p: BarkaPay) => p.paymentLinks.resume('PL-1'),
     ];
     const make = (replies: ConstructorParameters<typeof FakeFetch>[0]) => {
       const http = new FakeFetch(replies);
-      const payhub = new PayHub({
+      const barkapay = new BarkaPay({
         apiKey: 'k_id:s_secret',
         country: 'bf',
         maxRetries: 2,
         fetch: http.fn,
       });
-      return { http, payhub };
+      return { http, barkapay };
     };
 
     for (const run of writes) {
       for (const first of [reset, textResponse(503, '{}'), textResponse(502, '')]) {
-        const { http, payhub } = make([first, ok({ payment_link: LINK })]);
-        await expect(run(payhub)).rejects.toBeInstanceOf(Error);
+        const { http, barkapay } = make([first, ok({ payment_link: LINK })]);
+        await expect(run(barkapay)).rejects.toBeInstanceOf(Error);
         expect(http.calls).toHaveLength(1);
       }
 
@@ -286,24 +286,24 @@ describe('paymentLinks', () => {
         { status: 'error', code: 'too_many_requests' },
         { 'retry-after': '0' },
       );
-      const { http, payhub } = make([limited, ok({ payment_link: LINK })]);
-      await run(payhub);
+      const { http, barkapay } = make([limited, ok({ payment_link: LINK })]);
+      await run(barkapay);
       expect(http.calls).toHaveLength(2);
     }
   });
 
   it('fails loudly when a success response carries no link', async () => {
-    const { payhub } = client([ok({})]);
+    const { barkapay } = client([ok({})]);
 
-    const error = await payhub.paymentLinks.get('PL-1').catch((e: unknown) => e);
+    const error = await barkapay.paymentLinks.get('PL-1').catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).message).toContain('data.payment_link');
   });
 
   it('keeps an unknown status readable through raw', async () => {
-    const { payhub } = client([ok({ payment_link: { ...LINK, status: 'archived' } })]);
+    const { barkapay } = client([ok({ payment_link: { ...LINK, status: 'archived' } })]);
 
-    const link = await payhub.paymentLinks.get('PL-1');
+    const link = await barkapay.paymentLinks.get('PL-1');
     expect(link.status).toBeNull();
     expect(link.raw.status).toBe('archived');
   });
@@ -319,11 +319,11 @@ describe('payments.create — always a direct payment', () => {
   };
 
   it('POST /payments → a Payment, body sent as given', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment: { public_id: 'p-1', status: 'SUCCESSFUL' } }),
     ]);
 
-    const result = await payhub.payments.create(DIRECT);
+    const result = await barkapay.payments.create(DIRECT);
 
     expect(http.calls).toHaveLength(1);
     expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');
@@ -333,11 +333,11 @@ describe('payments.create — always a direct payment', () => {
   });
 
   it('never reroutes to the payment-link endpoint, whatever the body says', async () => {
-    const { payhub, http } = client([
+    const { barkapay, http } = client([
       ok({ payment: { public_id: 'p-1', status: 'SUCCESSFUL' } }),
     ]);
 
-    await payhub.payments.create({ ...DIRECT, channel: 'hosted' });
+    await barkapay.payments.create({ ...DIRECT, channel: 'hosted' });
 
     expect(http.calls).toHaveLength(1);
     expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');

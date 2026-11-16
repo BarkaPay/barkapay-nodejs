@@ -1,6 +1,6 @@
 # barkapay Node.js SDK
 
-Official Node.js / TypeScript client for the [barkapay API](https://payhub.africa/developers) —
+Official Node.js / TypeScript client for the [barkapay API](https://barkapay.com/developers) —
 mobile money collections, payouts and payment links across West Africa, behind one API.
 
 - **Zero runtime dependencies** — the global `fetch` (Node 18+) and `node:crypto`, nothing else.
@@ -17,15 +17,15 @@ Node **18 or later**.
 ## Install
 
 ```bash
-npm install barkapay-payhub
+npm install barkapay
 ```
 
 ## Quick start
 
 ```ts
-import { PayHub } from 'barkapay-payhub';
+import { BarkaPay } from 'barkapay';
 
-const barkapay = new PayHub({
+const barkapay = new BarkaPay({
   apiKey: process.env.BARKAPAY_API_KEY, // "key_id:secret", copied from your dashboard
   country: 'bf', // default country, overridable per call
 });
@@ -44,7 +44,7 @@ console.log(payment.publicId, payment.status);
 CommonJS works too:
 
 ```js
-const { PayHub } = require('barkapay-payhub');
+const { BarkaPay } = require('barkapay');
 ```
 
 > **Authentication** — pass the raw `key_id:secret` (or `keyId` and `secret` separately).
@@ -117,7 +117,7 @@ A payment the operator or the payer **refuses** rejects with `PaymentFailedError
 the refused payment is on the error:
 
 ```ts
-import { PaymentFailedError } from 'barkapay-payhub';
+import { PaymentFailedError } from 'barkapay';
 
 try {
   await barkapay.payments.create({
@@ -227,7 +227,7 @@ final state, signed in the **`Barkapay-Signature`** header
 
 ```ts
 import { createServer } from 'node:http';
-import { parseWebhook, SignatureVerificationError } from 'barkapay-payhub';
+import { parseWebhook, SignatureVerificationError } from 'barkapay';
 
 createServer((req, res) => {
   const chunks: Buffer[] = [];
@@ -257,7 +257,7 @@ serialised again is different text and will never verify. With Express, that mea
 
 ```ts
 import express from 'express';
-import { parseWebhook } from 'barkapay-payhub';
+import { parseWebhook } from 'barkapay';
 
 const app = express();
 
@@ -293,7 +293,7 @@ Good to know:
 
 ## Errors
 
-Every failure throws an error that extends `PayHubError`. API errors extend
+Every failure throws an error that extends `BarkaPayError`. API errors extend
 `ApiError` and carry `code`, `httpStatus`, `requestId` (quote it to support),
 `errors` (field → messages), `data`, `retryAfter` and `headers` (`retry-after`,
 `x-ratelimit-limit`, `x-ratelimit-remaining`, `x-request-id`). A `NetworkError`
@@ -322,7 +322,7 @@ create call it means "outcome unknown", not "refused": look the operation up.
 | `SignatureVerificationError` | —               | A webhook could not be verified.                                         |
 
 ```ts
-import { PayHubError, RateLimitError, ValidationError } from 'barkapay-payhub';
+import { BarkaPayError, RateLimitError, ValidationError } from 'barkapay';
 
 try {
   await barkapay.transfers.create({
@@ -336,7 +336,7 @@ try {
     console.error(error.errors); // { phone_number: ["…"] }
   } else if (error instanceof RateLimitError) {
     console.error(`Retry in ${error.retryAfter ?? '?'} s`);
-  } else if (error instanceof PayHubError) {
+  } else if (error instanceof BarkaPayError) {
     console.error(error.name, error.message);
   } else {
     throw error;
@@ -368,7 +368,7 @@ Failed payments and transfers explain themselves with a stable `reasonCode`
   no idempotency-key header, so the SDK never re-sends it for you. Do this instead:
 
 ```ts
-import { ApiError, NetworkError } from 'barkapay-payhub';
+import { ApiError, NetworkError } from 'barkapay';
 
 const params = {
   operator: 'ORANGE',
@@ -421,9 +421,9 @@ do {
 ## Configuration
 
 ```ts
-import { PayHub } from 'barkapay-payhub';
+import { BarkaPay } from 'barkapay';
 
-const client = new PayHub({
+const client = new BarkaPay({
   apiKey: process.env.BARKAPAY_API_KEY, // or keyId + secret
   country: 'bf',
   baseUrl: 'https://hub.barkapay.com', // default
@@ -456,6 +456,27 @@ Rate limits apply per route family; every response of the API carries
   trusting it.
 
 Report a vulnerability privately — see [SECURITY.md](./SECURITY.md).
+
+## Upgrading from 1.x
+
+2.0 is the same SDK under its final name: the package and a few exports were
+renamed, nothing else changed.
+
+```bash
+npm uninstall barkapay-payhub
+npm install barkapay@^2
+```
+
+- import from `'barkapay'` instead of `'barkapay-payhub'`;
+- `PayHub` → `BarkaPay`, `PayHubOptions` → `BarkaPayOptions`, `PayHubError` →
+  `BarkaPayError`;
+- `PayHubRequestInit` / `PayHubResponse` / `PayHubResponseHeaders` →
+  `BarkaPayRequestInit` / `BarkaPayResponse` / `BarkaPayResponseHeaders`;
+- the `User-Agent` sent to the API is now `barkapay-node/2.0.0 …`.
+
+Still on 1.0? Also read the 1.1 notes in the [changelog](./CHANGELOG.md): writes
+are no longer replayed after a network error, a timeout or a 5xx (they could be
+executed twice), redirects are never followed and the default timeout is 40 s.
 
 ## License
 
