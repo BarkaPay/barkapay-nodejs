@@ -6,7 +6,7 @@ import { coerceObject, isRecord } from './util';
  * Base class for every error the SDK throws — catch this to trap anything from
  * the SDK in one place.
  */
-export class PayHubError extends Error {
+export class BarkaPayError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
     // Restore the prototype chain + set a useful name across transpile targets.
@@ -16,7 +16,7 @@ export class PayHubError extends Error {
 }
 
 /** The SDK was constructed or called with invalid arguments. */
-export class ConfigurationError extends PayHubError {}
+export class ConfigurationError extends BarkaPayError {}
 
 /**
  * The HTTP request never produced a usable response (DNS, connection reset,
@@ -27,7 +27,7 @@ export class ConfigurationError extends PayHubError {}
  * have processed it. Look the operation up by your order id
  * (`list({ order_id })`) before sending it again.
  */
-export class NetworkError extends PayHubError {
+export class NetworkError extends BarkaPayError {
   /** `true` when the SDK gave up because `timeoutMs` elapsed. */
   readonly timedOut: boolean;
   /**
@@ -47,7 +47,7 @@ export class NetworkError extends PayHubError {
 }
 
 /** A webhook signature could not be verified (bad/stale/malformed/invalid JSON). */
-export class SignatureVerificationError extends PayHubError {}
+export class SignatureVerificationError extends BarkaPayError {}
 
 export interface ApiErrorContext {
   code?: string;
@@ -67,7 +67,7 @@ export interface ApiErrorContext {
  * the standard error envelope or a non-2xx status). Subclasses map the most
  * common cases so you can catch them precisely.
  */
-export class ApiError extends PayHubError {
+export class ApiError extends BarkaPayError {
   /** Machine-readable code from the envelope (e.g. `validation_error`). */
   readonly code: string;
   readonly httpStatus: number;

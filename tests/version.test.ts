@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { PayHub, VERSION } from '../src/index';
+import { BarkaPay, VERSION } from '../src/index';
 import { FakeFetch, ok } from './fakeFetch';
 
 function readJson(relative: string): Record<string, unknown> {
@@ -16,7 +16,7 @@ describe('version', () => {
 
   it('matches package.json (the User-Agent must not lie)', () => {
     expect(VERSION).toBe(pkg.version);
-    expect(PayHub.VERSION).toBe(pkg.version);
+    expect(BarkaPay.VERSION).toBe(pkg.version);
   });
 
   it('matches package-lock.json', () => {
@@ -32,11 +32,15 @@ describe('version', () => {
 
   it('is announced in the User-Agent together with the runtime', async () => {
     const http = new FakeFetch([ok({})]);
-    const client = new PayHub({ apiKey: 'k_id:s_secret', country: 'bf', fetch: http.fn });
+    const client = new BarkaPay({
+      apiKey: 'k_id:s_secret',
+      country: 'bf',
+      fetch: http.fn,
+    });
 
     await client.ping();
     expect(http.lastCall?.init.headers['User-Agent']).toBe(
-      `barkapay-payhub-node/${String(pkg.version)} node/${process.versions.node}`,
+      `barkapay-node/${String(pkg.version)} node/${process.versions.node}`,
     );
   });
 

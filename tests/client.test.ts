@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { PayHub } from '../src/index';
+import { BarkaPay } from '../src/index';
 import { FakeFetch, jsonResponse } from './fakeFetch';
 
-describe('PayHub client', () => {
+describe('BarkaPay client', () => {
   it('builds a signed, country-scoped request for payments.create', async () => {
     const http = new FakeFetch([
       jsonResponse(201, {
@@ -20,7 +20,7 @@ describe('PayHub client', () => {
       }),
     ]);
 
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'pk_live_x:sk_live_y',
       country: 'bf',
       maxRetries: 0,
@@ -44,9 +44,7 @@ describe('PayHub client', () => {
     expect(call?.init.headers.Authorization).toBe('Bearer pk_live_x:sk_live_y');
     expect(call?.init.headers.Accept).toBe('application/json');
     expect(call?.init.headers['Content-Type']).toBe('application/json');
-    expect(call?.init.headers['User-Agent']).toMatch(
-      /^barkapay-payhub-node\/\d+\.\d+\.\d+/,
-    );
+    expect(call?.init.headers['User-Agent']).toMatch(/^barkapay-node\/\d+\.\d+\.\d+/);
     expect(call?.init.headers['X-Request-Id']).toBeTruthy();
 
     expect(call?.init.body).toBeDefined();
@@ -56,7 +54,7 @@ describe('PayHub client', () => {
 
   it('overrides the country per call', async () => {
     const http = new FakeFetch([jsonResponse(200, { status: 'success', data: {} })]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -70,7 +68,7 @@ describe('PayHub client', () => {
 
   it('forgives an accidental "Bearer " prefix', async () => {
     const http = new FakeFetch([jsonResponse(200, { status: 'success', data: {} })]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'Bearer k:s',
       country: 'bf',
       maxRetries: 0,
@@ -84,7 +82,7 @@ describe('PayHub client', () => {
 
   it('accepts keyId + secret passed separately', async () => {
     const http = new FakeFetch([jsonResponse(200, { status: 'success', data: {} })]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       keyId: 'pk_live_x',
       secret: 'sk_live_y',
       country: 'bf',
@@ -110,7 +108,7 @@ describe('PayHub client', () => {
         meta: { current_page: 1, last_page: 1, per_page: 50, total: 2 },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -133,7 +131,7 @@ describe('PayHub client', () => {
         data: { payments: [{ public_id: 'pay_42', status: 'PROCESSING_OPERATOR' }] },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -155,7 +153,7 @@ describe('PayHub client', () => {
       }),
       jsonResponse(200, { status: 'success', data: {} }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -184,7 +182,7 @@ describe('PayHub client', () => {
         },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -216,7 +214,7 @@ describe('PayHub client', () => {
         },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -241,7 +239,7 @@ describe('PayHub client', () => {
         data: { payment: { public_id: 'pay_2', status: 'SUCCESSFUL' } },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -274,7 +272,7 @@ describe('PayHub client', () => {
         meta: { count: 2, lookup_field: 'order_id' },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -289,7 +287,7 @@ describe('PayHub client', () => {
     const http = new FakeFetch([
       jsonResponse(200, { status: 'success', data: { transfers: [] } }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -304,7 +302,7 @@ describe('PayHub client', () => {
 
   it('fails loudly when a creation succeeds without the created resource', async () => {
     const http = new FakeFetch([jsonResponse(201, { status: 'success', data: {} })]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -348,7 +346,7 @@ describe('PayHub client', () => {
         },
       }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 0,
@@ -376,7 +374,7 @@ describe('PayHub client', () => {
       }),
       jsonResponse(200, { status: 'success', data: {} }),
     ]);
-    const client = new PayHub({
+    const client = new BarkaPay({
       apiKey: 'k:s',
       country: 'bf',
       maxRetries: 1,

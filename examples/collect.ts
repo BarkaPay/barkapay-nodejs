@@ -2,13 +2,13 @@
 //   BARKAPAY_API_KEY="key_id:secret" BARKAPAY_PAYER_PHONE="…" npx tsx examples/collect.ts
 import {
   NetworkError,
-  PayHub,
-  PayHubError,
+  BarkaPay,
+  BarkaPayError,
   PaymentFailedError,
   ValidationError,
-} from 'barkapay-payhub';
+} from 'barkapay';
 
-const barkapay = new PayHub({
+const barkapay = new BarkaPay({
   apiKey: process.env.BARKAPAY_API_KEY,
   country: 'bf',
 });
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
           ? `It went through: ${data[0].status ?? '?'}`
           : 'Not created — safe to retry.',
       );
-    } else if (error instanceof PayHubError) {
+    } else if (error instanceof BarkaPayError) {
       console.error(`barkapay error: ${error.message}`);
     } else {
       throw error;

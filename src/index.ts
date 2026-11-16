@@ -1,4 +1,4 @@
-export { PayHub, type PayHubOptions } from './client';
+export { BarkaPay, type BarkaPayOptions } from './client';
 export { VERSION } from './version';
 
 export {
@@ -12,9 +12,9 @@ export {
 
 export type {
   FetchFn,
-  PayHubRequestInit,
-  PayHubResponse,
-  PayHubResponseHeaders,
+  BarkaPayRequestInit,
+  BarkaPayResponse,
+  BarkaPayResponseHeaders,
 } from './http';
 
 export {
@@ -26,7 +26,7 @@ export {
   InsufficientBalanceError,
   NetworkError,
   NotFoundError,
-  PayHubError,
+  BarkaPayError,
   PaymentFailedError,
   RateLimitError,
   ServerError,

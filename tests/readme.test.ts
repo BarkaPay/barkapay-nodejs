@@ -59,7 +59,7 @@ function compile(files: Map<string, string>): string[] {
     noEmit: true,
     skipLibCheck: true,
     baseUrl: root,
-    paths: { 'barkapay-payhub': ['./src/index.ts'] },
+    paths: { barkapay: ['./src/index.ts'] },
   };
 
   const host = ts.createCompilerHost(options);
@@ -105,7 +105,7 @@ describe('README', () => {
       // builds its own client, it gets the one the README calls `barkapay`.
       const client = /\bconst barkapay\b/.test(code)
         ? ''
-        : "declare const barkapay: import('barkapay-payhub').PayHub;\n";
+        : "declare const barkapay: import('barkapay').BarkaPay;\n";
       files.set(
         `${root}tests/__readme__/line-${line}.ts`,
         `${code}\nexport {};\n${client}${AMBIENT}`,
@@ -119,8 +119,8 @@ describe('README', () => {
     const files = new Map<string, string>([
       [
         `${root}tests/__readme__/broken.ts`,
-        "import { PayHub } from 'barkapay-payhub';\n" +
-          "const client = new PayHub({ apiKey: 'k:s', country: 'bf' });\n" +
+        "import { BarkaPay } from 'barkapay';\n" +
+          "const client = new BarkaPay({ apiKey: 'k:s', country: 'bf' });\n" +
           'await client.payments.refund("p");\n' +
           'export {};\n',
       ],
@@ -131,11 +131,11 @@ describe('README', () => {
     expect(errors[0]).toContain("Property 'refund' does not exist");
   }, 60_000);
 
-  it('uses the brand in lower case and never points at the legacy site', () => {
+  it('uses the brand in lower case and never points at the retired payhub.africa domain', () => {
     const prose = readme.replace(/```[\s\S]*?```/g, '').replace(/`[^`]*`/g, '');
 
     expect(prose).not.toMatch(/\bBarkaPay\b|\bBarkapay\b|\bBARKAPAY\b/);
-    expect(prose).not.toMatch(/payhub(?!\.africa)/i);
-    expect(readme).not.toMatch(/https?:\/\/(www\.)?barkapay\.com/);
+    expect(prose).not.toMatch(/payhub/i);
+    expect(readme).not.toMatch(/payhub\.africa/);
   });
 });

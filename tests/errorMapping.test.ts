@@ -8,8 +8,8 @@ import {
   InsufficientBalanceError,
   NetworkError,
   NotFoundError,
-  PayHub,
-  PayHubError,
+  BarkaPay,
+  BarkaPayError,
   PaymentFailedError,
   RateLimitError,
   ServerError,
@@ -17,11 +17,11 @@ import {
   TransferFailedError,
   ValidationError,
 } from '../src/index';
-import type { PayHubResponse } from '../src/http';
+import type { BarkaPayResponse } from '../src/http';
 import { FakeFetch, jsonResponse } from './fakeFetch';
 
-function clientReturning(response: PayHubResponse | Error, maxRetries = 0): PayHub {
-  return new PayHub({
+function clientReturning(response: BarkaPayResponse | Error, maxRetries = 0): BarkaPay {
+  return new BarkaPay({
     apiKey: 'k:s',
     country: 'bf',
     maxRetries,
@@ -295,13 +295,13 @@ describe('error mapping', () => {
     expect((error as NetworkError).timedOut).toBe(false);
   });
 
-  it('makes every SDK error catchable as PayHubError, with a proper name', async () => {
+  it('makes every SDK error catchable as BarkaPayError, with a proper name', async () => {
     const client = clientReturning(
       jsonResponse(404, { status: 'failed', code: 'resource_not_found', message: 'x' }),
     );
 
     const error = await client.payments.get('missing').catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(PayHubError);
+    expect(error).toBeInstanceOf(BarkaPayError);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).name).toBe('NotFoundError');
     expect((error as Error).stack).toContain('NotFoundError');

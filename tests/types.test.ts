@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 
 import {
-  PayHub,
+  BarkaPay,
   parseWebhook,
   verifyWebhookSignature,
   type FetchFn,
@@ -28,7 +28,7 @@ const minimalFake: FetchFn = () =>
   // 1.0.0-style fake without `headers`: must stay assignable.
   Promise.resolve({ status: 200, text: () => Promise.resolve('{}') });
 
-const client = new PayHub({ apiKey: 'k:s', country: 'bf', fetch: minimalFake });
+const client = new BarkaPay({ apiKey: 'k:s', country: 'bf', fetch: minimalFake });
 
 describe('public types', () => {
   it('payments.create is a direct payment and resolves to a Payment', () => {
@@ -158,7 +158,7 @@ describe('source compatibility with 1.0.0 call sites', () => {
       const valid: boolean = verifyWebhookSignature('{}', 't=1,v1=x', 'whsec', 300);
 
       // The global fetch is a valid transport.
-      new PayHub({ keyId: 'k', secret: 's', fetch: globalThis.fetch });
+      new BarkaPay({ keyId: 'k', secret: 's', fetch: globalThis.fetch });
 
       return [ping, me, availability, info, event, valid];
     };

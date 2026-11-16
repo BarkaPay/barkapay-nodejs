@@ -4,7 +4,7 @@
 
 Please **do not** open a public issue for a security vulnerability.
 
-- Preferred: GitHub's [private vulnerability reporting](https://github.com/BarkaPay/payhub-nodejs/security/advisories/new).
+- Preferred: GitHub's [private vulnerability reporting](https://github.com/BarkaPay/barkapay-nodejs/security/advisories/new).
 - Or email **security@payhub.africa** with the details and the steps to reproduce.
 
 We aim to acknowledge a report within 72 hours and to keep you informed until a
@@ -14,10 +14,10 @@ fix is released. Please give us a reasonable time to ship it before disclosing.
 
 Security fixes are released for the latest minor version.
 
-| Version | Supported                                                                         |
-| ------- | --------------------------------------------------------------------------------- |
-| 1.1.x   | yes                                                                               |
-| 1.0.x   | no — upgrade to 1.1 (see the Security section of the [changelog](./CHANGELOG.md)) |
+| Version                 | Supported                                      |
+| ----------------------- | ---------------------------------------------- |
+| 2.0.x (`barkapay`)      | yes                                            |
+| 1.x (`barkapay-payhub`) | no — upgrade to 2.0 (a rename, see the README) |
 
 ## What the SDK does for you
 

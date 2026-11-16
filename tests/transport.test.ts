@@ -10,7 +10,7 @@ import {
   ApiError,
   NetworkError,
   NotFoundError,
-  PayHub,
+  BarkaPay,
   RateLimitError,
   ServiceUnavailableError,
 } from '../src/index';
@@ -232,9 +232,13 @@ describe('retries — requests that create something or move money', () => {
     expect(http.calls).toHaveLength(2);
   });
 
-  it('keeps PayHub money calls single-shot end to end', async () => {
+  it('keeps BarkaPay money calls single-shot end to end', async () => {
     const http = new FakeFetch([unavailable, ok({ payment: { public_id: 'p' } })]);
-    const client = new PayHub({ apiKey: 'k_id:s_secret', country: 'bf', fetch: http.fn });
+    const client = new BarkaPay({
+      apiKey: 'k_id:s_secret',
+      country: 'bf',
+      fetch: http.fn,
+    });
 
     await expect(
       client.payments.create({
@@ -383,42 +387,46 @@ describe('responses', () => {
   });
 
   it.each([
-    ['ping', (p: PayHub) => p.ping()],
-    ['me', (p: PayHub) => p.me()],
-    ['balance.get', (p: PayHub) => p.balance.get()],
-    ['operators.info', (p: PayHub) => p.operators.info()],
-    ['operators.availability', (p: PayHub) => p.operators.availability()],
-    ['payments.list', (p: PayHub) => p.payments.list()],
-    ['transfers.list', (p: PayHub) => p.transfers.list()],
-    ['paymentLinks.list', (p: PayHub) => p.paymentLinks.list()],
+    ['ping', (p: BarkaPay) => p.ping()],
+    ['me', (p: BarkaPay) => p.me()],
+    ['balance.get', (p: BarkaPay) => p.balance.get()],
+    ['operators.info', (p: BarkaPay) => p.operators.info()],
+    ['operators.availability', (p: BarkaPay) => p.operators.availability()],
+    ['payments.list', (p: BarkaPay) => p.payments.list()],
+    ['transfers.list', (p: BarkaPay) => p.transfers.list()],
+    ['paymentLinks.list', (p: BarkaPay) => p.paymentLinks.list()],
   ])(
     '%s: a success envelope without `data` is an error, not an empty result',
     async (_n, run) => {
       const http = new FakeFetch([
         jsonResponse(200, { status: 'success', code: 'success' }),
       ]);
-      const payhub = new PayHub({
+      const barkapay = new BarkaPay({
         apiKey: 'k_id:s_secret',
         country: 'bf',
         fetch: http.fn,
       });
 
-      await expect(run(payhub)).rejects.toMatchObject({ code: 'invalid_response' });
+      await expect(run(barkapay)).rejects.toMatchObject({ code: 'invalid_response' });
     },
   );
 
   it.each([
-    ['payments.list', (p: PayHub) => p.payments.list()],
-    ['payments.get', (p: PayHub) => p.payments.get('ORDER-1')],
-    ['transfers.list', (p: PayHub) => p.transfers.list()],
-    ['transfers.get', (p: PayHub) => p.transfers.get('ORDER-1')],
-    ['paymentLinks.list', (p: PayHub) => p.paymentLinks.list()],
-    ['paymentLinks.listPayments', (p: PayHub) => p.paymentLinks.listPayments('PL-1')],
+    ['payments.list', (p: BarkaPay) => p.payments.list()],
+    ['payments.get', (p: BarkaPay) => p.payments.get('ORDER-1')],
+    ['transfers.list', (p: BarkaPay) => p.transfers.list()],
+    ['transfers.get', (p: BarkaPay) => p.transfers.get('ORDER-1')],
+    ['paymentLinks.list', (p: BarkaPay) => p.paymentLinks.list()],
+    ['paymentLinks.listPayments', (p: BarkaPay) => p.paymentLinks.listPayments('PL-1')],
   ])('%s: a list missing from `data` is an error, never "no result"', async (_n, run) => {
     const http = new FakeFetch([ok({ unrelated: 1 })]);
-    const payhub = new PayHub({ apiKey: 'k_id:s_secret', country: 'bf', fetch: http.fn });
+    const barkapay = new BarkaPay({
+      apiKey: 'k_id:s_secret',
+      country: 'bf',
+      fetch: http.fn,
+    });
 
-    await expect(run(payhub)).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(run(barkapay)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('treats an error envelope as an error even on HTTP 200', async () => {
@@ -694,13 +702,13 @@ describe('hostile responses — size cap', () => {
     const port = typeof address === 'object' && address !== null ? address.port : 0;
 
     try {
-      const payhub = new PayHub({
+      const barkapay = new BarkaPay({
         apiKey: 'k_id:s_secret',
         country: 'bf',
         baseUrl: `http://127.0.0.1:${port}`,
         maxRetries: 0,
       });
-      const error = await payhub.ping().catch((e: unknown) => e);
+      const error = await barkapay.ping().catch((e: unknown) => e);
       expect(error).toBeInstanceOf(NetworkError);
       expect((error as NetworkError).message).toContain('maximum accepted size');
     } finally {

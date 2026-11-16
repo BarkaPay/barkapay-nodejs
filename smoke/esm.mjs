@@ -1,14 +1,14 @@
-// ES module consumer: `import … from 'barkapay-payhub'` must resolve to the ESM build.
+// ES module consumer: `import … from 'barkapay'` must resolve to the ESM build.
 import { createRequire } from 'node:module';
 
-import * as sdk from 'barkapay-payhub';
-import { PayHub } from 'barkapay-payhub';
+import * as sdk from 'barkapay';
+import { BarkaPay } from 'barkapay';
 
 const require = createRequire(import.meta.url);
-const { version } = require('barkapay-payhub/package.json');
+const { version } = require('barkapay/package.json');
 const { run } = require('./suite.cjs');
 
-if (sdk.PayHub !== PayHub) {
+if (sdk.BarkaPay !== BarkaPay) {
   throw new Error('named and namespace imports disagree');
 }
 

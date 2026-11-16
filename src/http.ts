@@ -4,7 +4,7 @@
  * stack or to fake the network in tests. The shape is intentionally narrow so a
  * fake is trivial to write, while the global `fetch` remains assignable.
  */
-export interface PayHubRequestInit {
+export interface BarkaPayRequestInit {
   method: string;
   headers: Record<string, string>;
   body?: string;
@@ -19,15 +19,18 @@ export interface PayHubRequestInit {
 }
 
 /** The subset of response headers the SDK reads (`Retry-After`, `X-Request-Id`). */
-export interface PayHubResponseHeaders {
+export interface BarkaPayResponseHeaders {
   get(name: string): string | null;
 }
 
-export interface PayHubResponse {
+export interface BarkaPayResponse {
   status: number;
   /** Optional so that a minimal fake (`{ status, text }`) stays valid. */
-  headers?: PayHubResponseHeaders;
+  headers?: BarkaPayResponseHeaders;
   text(): Promise<string>;
 }
 
-export type FetchFn = (url: string, init: PayHubRequestInit) => Promise<PayHubResponse>;
+export type FetchFn = (
+  url: string,
+  init: BarkaPayRequestInit,
+) => Promise<BarkaPayResponse>;

@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-16
+
+The SDK takes its final name. 2.0 is a pure rename of 1.1.0: same resources,
+same methods, same retry rules (reads replayed on 429 / 502 / 503 / 504 and
+network errors; writes only on a 429 asking for 10 seconds or less), same
+behaviour.
+
+### Changed (breaking)
+
+- npm package `barkapay-payhub` → **`barkapay`**. The old package is deprecated
+  and receives no further release.
+- Client class `PayHub` → **`BarkaPay`**; options type `PayHubOptions` →
+  **`BarkaPayOptions`**.
+- Base error class `PayHubError` → **`BarkaPayError`**.
+- Transport types `PayHubRequestInit`, `PayHubResponse`,
+  `PayHubResponseHeaders` → **`BarkaPayRequestInit`**, **`BarkaPayResponse`**,
+  **`BarkaPayResponseHeaders`**.
+- `User-Agent` sent to the API: `barkapay-node/<version> node/<version>`;
+  `JSON.stringify(client)` reports `"sdk": "barkapay"`.
+- Repository moved to `github.com/BarkaPay/barkapay-nodejs`; documentation at
+  `https://barkapay.com/developers`.
+
+### Migrating from 1.x
+
+1. `npm uninstall barkapay-payhub && npm install barkapay@^2`
+2. Import from `'barkapay'` instead of `'barkapay-payhub'`.
+3. Rename `PayHub` → `BarkaPay`, `PayHubError` → `BarkaPayError` (and the
+   `PayHub*` transport types if you wrote a custom `fetch`).
+
 ## [1.1.0] - 2026-11-16
 
 Backward compatible with 1.0.0: no export was removed or renamed and every 1.0.0
@@ -147,6 +176,7 @@ stricter on purpose.
 - Zero runtime dependencies: global `fetch` + `node:crypto`, automatic retries on
   429/503/network. Dual ESM + CJS + type-definition build.
 
-[Unreleased]: https://github.com/BarkaPay/payhub-nodejs/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/BarkaPay/payhub-nodejs/compare/f8c3be6...v1.1.0
+[Unreleased]: https://github.com/BarkaPay/barkapay-nodejs/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/BarkaPay/barkapay-nodejs/compare/v1.1.0...v2.0.0
+[1.1.0]: https://github.com/BarkaPay/barkapay-nodejs/compare/f8c3be6...v1.1.0
 [1.0.0]: https://www.npmjs.com/package/barkapay-payhub/v/1.0.0

@@ -3,11 +3,7 @@
 //   BARKAPAY_WEBHOOK_SECRET="whsec_…" npx tsx examples/webhook.ts
 import { createServer } from 'node:http';
 
-import {
-  SignatureVerificationError,
-  parseWebhook,
-  type WebhookEvent,
-} from 'barkapay-payhub';
+import { SignatureVerificationError, parseWebhook, type WebhookEvent } from 'barkapay';
 
 const SECRET = process.env.BARKAPAY_WEBHOOK_SECRET ?? '';
 if (SECRET === '') {

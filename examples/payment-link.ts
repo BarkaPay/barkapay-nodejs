@@ -1,8 +1,8 @@
 // Create a payment link, share it, then follow what was paid through it.
 //   BARKAPAY_API_KEY="key_id:secret" npx tsx examples/payment-link.ts
-import { PayHub, PayHubError } from 'barkapay-payhub';
+import { BarkaPay, BarkaPayError } from 'barkapay';
 
-const barkapay = new PayHub({
+const barkapay = new BarkaPay({
   apiKey: process.env.BARKAPAY_API_KEY,
   country: 'bf',
 });
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     const canceled = await barkapay.paymentLinks.cancel(link.publicId);
     console.log(`Link is now ${canceled.status ?? 'unknown'}`);
   } catch (error) {
-    if (error instanceof PayHubError) {
+    if (error instanceof BarkaPayError) {
       console.error(`barkapay error: ${error.message}`);
       return;
     }

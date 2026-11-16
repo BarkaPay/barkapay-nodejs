@@ -1,8 +1,8 @@
 // Read-only tour: key check, balance, operators, recent payments.
 //   BARKAPAY_API_KEY="key_id:secret" npx tsx examples/balance.ts
-import { PayHub, PayHubError } from 'barkapay-payhub';
+import { BarkaPay, BarkaPayError } from 'barkapay';
 
-const barkapay = new PayHub({
+const barkapay = new BarkaPay({
   apiKey: process.env.BARKAPAY_API_KEY,
   country: 'bf',
 });
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     }
     console.log(`${recent.meta?.total ?? 0} payment(s) in total`);
   } catch (error) {
-    if (error instanceof PayHubError) {
+    if (error instanceof BarkaPayError) {
       console.error(`barkapay error: ${error.message}`);
       return;
     }
