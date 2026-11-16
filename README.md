@@ -178,19 +178,8 @@ Only `title`, `description`, `expires_at` and `redirect` can change after creati
 check `status` on the result. Payments made through a link carry
 `channel: 'hosted'` and `linkPublicId`.
 
-`payments.create` can also create a link — pass `channel: 'hosted'` with the same
-fields. It then resolves to a `PaymentLink` instead of a `Payment`; tell them
-apart with `object`:
-
-```ts
-const result = await barkapay.payments.create({
-  channel: 'hosted',
-  title: 'Invoice #1234',
-  amount: { type: 'fixed', value: 25000 },
-});
-
-console.log(result.object, result.url); // "payment_link"
-```
+`payments.create` is always a direct payment: the hosted checkout is created
+with `paymentLinks.create` only.
 
 ## Transfers
 

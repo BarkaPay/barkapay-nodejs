@@ -214,25 +214,13 @@ async function run(sdk, label, packageVersion) {
     // --- a non-JSON error page maps by status --------------------------------
     assert.ok((await rejection(routedTo('/bf/v1/html').ping())) instanceof NotFoundError);
 
-    // --- payment links, and the hosted channel -------------------------------
+    // --- payment links --------------------------------------------------------
     const link = await client.paymentLinks.create({
       title: 'Smoke',
       amount: { type: 'fixed', value: 25000 },
     });
     assert.equal(link.object, 'payment_link');
     assert.equal(link.url, 'https://checkout.example/9j32HfkT2mQx4');
-
-    const hosted = await client.payments.create({
-      channel: 'hosted',
-      title: 'Smoke',
-      amount: { type: 'fixed', value: 25000 },
-    });
-    assert.equal(hosted.object, 'payment_link');
-    const lastLinkCall = seen.filter((r) => r.url === '/bf/v1/payments/links').pop();
-    assert.deepEqual(JSON.parse(lastLinkCall.body), {
-      title: 'Smoke',
-      amount: { type: 'fixed', value: 25000 },
-    });
 
     // --- path injection is refused before any request ------------------------
     const before = seen.length;

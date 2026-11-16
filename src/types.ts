@@ -429,8 +429,6 @@ export interface OrderParams {
 }
 
 export interface PaymentCreateParams {
-  /** `direct` (default) charges the payer now. See {@link HostedPaymentCreateParams} for `hosted`. */
-  channel?: 'direct';
   /** Upper-case operator code, e.g. `ORANGE`, `MOOV`, `MTN`, `WAVE` (see `operators.info()`). */
   operator: string;
   /** National format, without the country code (8 digits in `bf`, 9 in `sn`, 10 in `bj`). */
@@ -521,19 +519,6 @@ export interface PaymentLinkUpdateParams {
   redirect?: { success_url?: string | null; cancel_url?: string | null } | null;
   [key: string]: unknown;
 }
-
-/**
- * `payments.create({ channel: 'hosted', … })` — instead of charging a payer
- * now, create a payment link and get back a {@link PaymentLink}.
- */
-export type HostedPaymentCreateParams = PaymentLinkCreateParams & { channel: 'hosted' };
-
-/**
- * What `payments.create` resolves to: a {@link Payment} (`channel: 'direct'`,
- * the default) or a {@link PaymentLink} (`channel: 'hosted'`). Tell them
- * apart with `result.object`.
- */
-export type PaymentCreateResult = Payment | PaymentLink;
 
 // ---------------------------------------------------------------------------
 // System & operators (raw API shapes)

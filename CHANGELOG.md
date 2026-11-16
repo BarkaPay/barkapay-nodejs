@@ -44,10 +44,8 @@ stricter on purpose.
 
 - **Payment links** — `client.paymentLinks`: `create`, `list`, `get`, `update`,
   `cancel`, `pause`, `resume`, `listPayments`, with the `PaymentLink` type.
-- `payments.create({ channel: 'hosted', … })` creates a payment link and
-  resolves to a `PaymentLink`; `channel: 'direct'` (the default) is unchanged.
-  The result is a union discriminated by the new `object` field
-  (`'payment'` / `'payment_link'`).
+- An `object` field on `Payment`, `Transfer` and `PaymentLink`
+  (`'payment'` / `'transfer'` / `'payment_link'`).
 - New fields on `Payment` and `Transfer`: `reasonCode` (stable failure code),
   `providerReason`, `providerReference`, plus `linkPublicId` and `redirectUrl`
   on `Payment`. `ReasonCode` / `REASON_CODES` publish the catalogue.

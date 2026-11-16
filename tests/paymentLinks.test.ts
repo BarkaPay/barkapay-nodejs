@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiError, ConfigurationError, PayHub } from '../src/index';
+import { ApiError, PayHub } from '../src/index';
 import { FakeFetch, ok, type Reply } from './fakeFetch';
 
 /** A link exactly as GET /{cc}/v1/payments/links/{id} returns it. */
@@ -304,7 +304,7 @@ describe('paymentLinks', () => {
   });
 });
 
-describe('payments.create — channel', () => {
+describe('payments.create — always a direct payment', () => {
   const DIRECT = {
     operator: 'ORANGE',
     phone_number: '74123456',
@@ -313,72 +313,28 @@ describe('payments.create — channel', () => {
     order: { id: 'ORDER-1', unique: true },
   };
 
-  it('direct (default): POST /payments → a Payment', async () => {
+  it('POST /payments → a Payment, body sent as given', async () => {
     const { payhub, http } = client([
       ok({ payment: { public_id: 'p-1', status: 'SUCCESSFUL' } }),
     ]);
 
     const result = await payhub.payments.create(DIRECT);
 
+    expect(http.calls).toHaveLength(1);
     expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');
     expect(http.body()).toEqual(DIRECT);
     expect(result.object).toBe('payment');
     expect(result.status).toBe('SUCCESSFUL');
   });
 
-  it('direct (explicit): the SDK-only `channel` field is not put on the wire', async () => {
+  it('never reroutes to the payment-link endpoint, whatever the body says', async () => {
     const { payhub, http } = client([
-      ok({ payment: { public_id: 'p-1', status: 'AWAITING_OTP' } }),
+      ok({ payment: { public_id: 'p-1', status: 'SUCCESSFUL' } }),
     ]);
 
-    const result = await payhub.payments.create({ channel: 'direct', ...DIRECT });
-
-    expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');
-    expect(http.body()).toEqual(DIRECT);
-    expect(http.body()).not.toHaveProperty('channel');
-    expect(result.object).toBe('payment');
-  });
-
-  it('hosted: POST /payments/links → a PaymentLink, never a direct charge', async () => {
-    const { payhub, http } = client([ok({ payment_link: LINK }, undefined, 201)]);
-
-    const result = await payhub.payments.create({
-      channel: 'hosted',
-      title: 'Facture #1234',
-      amount: { type: 'fixed', value: 25000 },
-    });
+    await payhub.payments.create({ ...DIRECT, channel: 'hosted' });
 
     expect(http.calls).toHaveLength(1);
-    expect(http.lastCall?.url).toBe(BASE);
-    expect(http.body()).toEqual({
-      title: 'Facture #1234',
-      amount: { type: 'fixed', value: 25000 },
-    });
-    expect(result.object).toBe('payment_link');
-    expect(result.url).toBe('https://checkout.example/9j32HfkT2mQx4');
-  });
-
-  it('lets a caller narrow the union on `object`', async () => {
-    const { payhub } = client([ok({ payment_link: LINK })]);
-    const params = { channel: 'hosted', title: 'T', amount: { type: 'open' } } as
-      | (Parameters<typeof payhub.paymentLinks.create>[0] & { channel: 'hosted' })
-      | typeof DIRECT;
-
-    const result = await payhub.payments.create(params);
-
-    if (result.object === 'payment_link') {
-      expect(result.slug).toBe('9j32HfkT2mQx4');
-    } else {
-      expect.unreachable(`expected a payment link, got a payment ${result.publicId}`);
-    }
-  });
-
-  it('refuses an unknown channel without calling the API', async () => {
-    const { payhub, http } = client([ok({ payment: { public_id: 'p-1' } })]);
-
-    await expect(
-      payhub.payments.create({ ...DIRECT, channel: 'ussd' as never }),
-    ).rejects.toBeInstanceOf(ConfigurationError);
-    expect(http.calls).toHaveLength(0);
+    expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');
   });
 });
