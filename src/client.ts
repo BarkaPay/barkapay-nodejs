@@ -8,11 +8,16 @@ import { PaymentLinks } from './resources/paymentLinks';
 import { Payments } from './resources/payments';
 import { Transfers } from './resources/transfers';
 import type { MeResult, PingResult } from './types';
-import { coerceObject } from './util';
+import { expectData } from './resources/shared';
 import { VERSION } from './version';
 
 const DEFAULT_BASE_URL = 'https://hub.barkapay.com';
-const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * The hub gives a gateway 30 s to answer and then replies 503 itself: waiting
+ * a little longer lets the SDK receive that verdict instead of giving up on an
+ * unknown outcome.
+ */
+const DEFAULT_TIMEOUT_MS = 40_000;
 const DEFAULT_MAX_RETRIES = 2;
 const MAX_RETRIES_CEILING = 10;
 
@@ -29,15 +34,21 @@ export interface PayHubOptions {
   secret?: string;
   /** Default country code (`"bf"`, `"bj"` or `"sn"`); overridable per call. */
   country?: string;
-  /** API base URL (default `https://hub.barkapay.com`). Must be `https://` outside of local testing. */
+  /**
+   * API base URL (default `https://hub.barkapay.com`). Must be `https://`;
+   * plain `http://` is accepted for a loopback host only (`localhost`,
+   * `127.0.0.1`, `[::1]`) — or for any non-barkapay host when you pass your
+   * own `fetch`, which then owns the connection.
+   */
   baseUrl?: string;
   /**
-   * Automatic retries (default 2). Read-only and idempotent calls are retried
-   * on network failures and 408/429/502/503/504; calls that create something
-   * or move money are retried on 429 only. `0` disables retries.
+   * Automatic retries (default 2). Reads (GET) are retried on network
+   * failures, timeouts and 429/502/503/504; writes (create, confirm, update,
+   * cancel, pause, resume…) on 429 only, and only when the API asks to wait
+   * 10 s or less. `0` disables retries.
    */
   maxRetries?: number;
-  /** Per-attempt timeout in milliseconds, headers and body included (default 30000). */
+  /** Per-attempt timeout in milliseconds, headers and body included (default 40000). */
   timeoutMs?: number;
   /** A `fetch`-compatible function; defaults to the global `fetch` (Node 18+). */
   fetch?: FetchFn;
@@ -85,7 +96,7 @@ export class PayHub {
     this.#api = new ApiClient({
       fetchFn,
       authorization: buildAuthorization(options),
-      baseUrl: normalizeBaseUrl(options.baseUrl),
+      baseUrl: normalizeBaseUrl(options.baseUrl, options.fetch !== undefined),
       defaultCountry: normalizeDefaultCountry(options.country),
       maxRetries: normalizeMaxRetries(options.maxRetries),
       timeoutMs: normalizeTimeout(options.timeoutMs),
@@ -102,13 +113,13 @@ export class PayHub {
   /** Liveness check (also confirms your key works). */
   async ping(country?: string): Promise<PingResult> {
     const env = await this.#api.request('GET', 'ping', { country });
-    return coerceObject(env, 'data') ?? {};
+    return expectData(env);
   }
 
   /** Current merchant + API application details (scopes, operator permissions). */
   async me(country?: string): Promise<MeResult> {
     const env = await this.#api.request('GET', 'me', { country });
-    return coerceObject(env, 'data') ?? {};
+    return expectData(env);
   }
 
   /** Safe summary for `JSON.stringify` — never includes the API key. */
@@ -173,7 +184,7 @@ function normalizeDefaultCountry(value: unknown): string {
   return normalizeCountry(value);
 }
 
-function normalizeBaseUrl(value: unknown): string {
+function normalizeBaseUrl(value: unknown, customFetch: boolean): string {
   if (value === undefined || value === null) {
     return DEFAULT_BASE_URL;
   }
@@ -204,8 +215,22 @@ function normalizeBaseUrl(value: unknown): string {
       '`baseUrl` must not carry a query string or a fragment.',
     );
   }
-  if (url.protocol === 'http:' && !isLoopback(url.hostname)) {
-    warnInsecureBaseUrl();
+  if (url.protocol === 'http:') {
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    if (host === 'barkapay.com' || host.endsWith('.barkapay.com')) {
+      throw new ConfigurationError(
+        `The barkapay API is only served over HTTPS: use ${DEFAULT_BASE_URL}.`,
+      );
+    }
+    if (!isLoopback(host)) {
+      if (!customFetch) {
+        throw new ConfigurationError(
+          '`baseUrl` must use https:// (http:// is accepted for localhost only): ' +
+            'the API key must never travel in clear text.',
+        );
+      }
+      warnInsecureBaseUrl();
+    }
   }
 
   return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
@@ -214,7 +239,6 @@ function normalizeBaseUrl(value: unknown): string {
 function isLoopback(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
-    hostname.endsWith('.localhost') ||
     hostname === '[::1]' ||
     /^127(\.\d{1,3}){3}$/.test(hostname)
   );

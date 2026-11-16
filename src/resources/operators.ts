@@ -1,6 +1,6 @@
 import type { ApiClient } from '../apiClient';
 import type { CallOptions, OperatorsAvailability, OperatorsInfo } from '../types';
-import { coerceObject } from '../util';
+import { expectData } from './shared';
 
 export class Operators {
   readonly #api: ApiClient;
@@ -14,7 +14,7 @@ export class Operators {
     const env = await this.#api.request('GET', 'operators/availability', {
       country: options.country,
     });
-    return coerceObject(env, 'data') ?? {};
+    return expectData(env);
   }
 
   /**
@@ -25,6 +25,6 @@ export class Operators {
     const env = await this.#api.request('GET', 'operators/info', {
       country: options.country,
     });
-    return coerceObject(env, 'data') ?? {};
+    return expectData(env);
   }
 }

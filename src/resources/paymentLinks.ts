@@ -15,7 +15,7 @@ import type {
   PaymentLinkPaymentListParams,
   PaymentLinkUpdateParams,
 } from '../types';
-import { expectResource } from './shared';
+import { expectResource, expectRows } from './shared';
 
 /**
  * Payment links — durable pages on the barkapay-hosted checkout. Wherever an
@@ -58,6 +58,7 @@ export class PaymentLinks {
       country: options.country,
       query: params,
     });
+    expectRows(env, 'payment_links');
     return hydratePaymentLinkList(env);
   }
 
@@ -81,7 +82,6 @@ export class PaymentLinks {
     const env = await this.#api.request('PATCH', linkPath(id), {
       country: options.country,
       body: params,
-      retry: 'idempotent',
     });
     return hydratePaymentLink(expectResource(env, 'payment_link'));
   }
@@ -90,7 +90,6 @@ export class PaymentLinks {
   async cancel(id: string, options: CallOptions = {}): Promise<PaymentLink> {
     const env = await this.#api.request('DELETE', linkPath(id), {
       country: options.country,
-      retry: 'idempotent',
     });
     return hydratePaymentLink(expectResource(env, 'payment_link'));
   }
@@ -102,7 +101,6 @@ export class PaymentLinks {
   async pause(id: string, options: CallOptions = {}): Promise<PaymentLink> {
     const env = await this.#api.request('POST', `${linkPath(id)}/pause`, {
       country: options.country,
-      retry: 'idempotent',
     });
     return hydratePaymentLink(expectResource(env, 'payment_link'));
   }
@@ -114,7 +112,6 @@ export class PaymentLinks {
   async resume(id: string, options: CallOptions = {}): Promise<PaymentLink> {
     const env = await this.#api.request('POST', `${linkPath(id)}/resume`, {
       country: options.country,
-      retry: 'idempotent',
     });
     return hydratePaymentLink(expectResource(env, 'payment_link'));
   }
@@ -134,6 +131,7 @@ export class PaymentLinks {
       country: options.country,
       query: params,
     });
+    expectRows(env, 'payments');
     return hydratePaymentLinkPaymentList(env);
   }
 }

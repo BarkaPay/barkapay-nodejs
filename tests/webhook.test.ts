@@ -189,12 +189,19 @@ describe('webhook signature — forgeries and replays', () => {
     expect(verifyWebhookSignature(PAYLOAD, sign(PAYLOAD, t + 301), SECRET)).toBe(false);
   });
 
-  it('applies a custom tolerance; 0 switches the window off', () => {
+  it('applies a custom tolerance; zero, negative or non-finite is refused', () => {
     const stale = sign(PAYLOAD, now() - 1000);
 
     expect(verifyWebhookSignature(PAYLOAD, stale, SECRET)).toBe(false);
     expect(verifyWebhookSignature(PAYLOAD, stale, SECRET, 2000)).toBe(true);
-    expect(verifyWebhookSignature(PAYLOAD, stale, SECRET, 0)).toBe(true);
+    for (const tolerance of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => verifyWebhookSignature(PAYLOAD, stale, SECRET, tolerance)).toThrow(
+        ConfigurationError,
+      );
+      expect(() => parseWebhook(PAYLOAD, stale, SECRET, tolerance)).toThrow(
+        ConfigurationError,
+      );
+    }
     expect(verifyWebhookSignature(PAYLOAD, sign(PAYLOAD, now() - 20), SECRET, 10)).toBe(
       false,
     );

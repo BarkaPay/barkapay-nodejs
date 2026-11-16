@@ -30,10 +30,19 @@ export class ConfigurationError extends PayHubError {}
 export class NetworkError extends PayHubError {
   /** `true` when the SDK gave up because `timeoutMs` elapsed. */
   readonly timedOut: boolean;
+  /**
+   * The `X-Request-Id` the SDK sent with the request — quote it to support to
+   * find out whether the request reached the API.
+   */
+  readonly requestId: string | null;
 
-  constructor(message: string, options: { cause?: unknown; timedOut?: boolean } = {}) {
+  constructor(
+    message: string,
+    options: { cause?: unknown; timedOut?: boolean; requestId?: string | null } = {},
+  ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.timedOut = options.timedOut ?? false;
+    this.requestId = options.requestId ?? null;
   }
 }
 
@@ -49,6 +58,8 @@ export interface ApiErrorContext {
   data?: Record<string, unknown> | null;
   /** Seconds to wait before retrying, from the `Retry-After` response header. */
   retryAfter?: number | null;
+  /** Response headers the SDK keeps (lower-cased names). */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -72,6 +83,11 @@ export class ApiError extends PayHubError {
   readonly data: Record<string, unknown> | null;
   /** Seconds to wait before retrying (`Retry-After` header), when the API says so. */
   readonly retryAfter: number | null;
+  /**
+   * Response headers, lower-cased names: `retry-after`, `x-request-id`,
+   * `x-ratelimit-limit`, `x-ratelimit-remaining` (when the API sent them).
+   */
+  readonly headers: Record<string, string>;
 
   constructor(message: string, context: ApiErrorContext = {}) {
     super(message);
@@ -81,6 +97,7 @@ export class ApiError extends PayHubError {
     this.errors = context.errors ?? {};
     this.data = context.data ?? null;
     this.retryAfter = context.retryAfter ?? null;
+    this.headers = { ...(context.headers ?? {}) };
   }
 
   /**
@@ -105,6 +122,7 @@ export class ApiError extends PayHubError {
     envelope: Record<string, unknown>,
     fallbackRequestId: string | null = null,
     retryAfter: number | null = null,
+    headers: Record<string, string> = {},
   ): ApiError {
     const code = typeof envelope.code === 'string' ? envelope.code : '';
     const rawMessage = envelope.message;
@@ -121,7 +139,15 @@ export class ApiError extends PayHubError {
 
     const Ctor = classFor(code, httpStatus);
 
-    return new Ctor(message, { code, httpStatus, requestId, errors, data, retryAfter });
+    return new Ctor(message, {
+      code,
+      httpStatus,
+      requestId,
+      errors,
+      data,
+      retryAfter,
+      headers,
+    });
   }
 }
 
@@ -135,7 +161,11 @@ export class ValidationError extends ApiError {}
 export class NotFoundError extends ApiError {}
 /** 409 — duplicate (`order.unique`, or the same transfer sent again within 60 seconds). */
 export class ConflictError extends ApiError {}
-/** 429 — rate limited; `retryAfter` says how long to wait. */
+/**
+ * 429 — rate limited; the request was NOT executed. `retryAfter` says how long
+ * to wait; `headers['x-ratelimit-limit']` / `headers['x-ratelimit-remaining']`
+ * carry the budget.
+ */
 export class RateLimitError extends ApiError {}
 /** 400 `insufficient_balance` — your barkapay balance does not cover the transfer and its fees. */
 export class InsufficientBalanceError extends ApiError {}
