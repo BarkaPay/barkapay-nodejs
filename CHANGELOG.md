@@ -99,6 +99,9 @@ stricter on purpose.
   `NetworkError`.
 - `README`: `transfers.list({ from_date })` alone was shown as a working filter;
   the API only applies a date range when both `from_date` and `to_date` are sent.
+- `README` and examples: the sample phone number (`50123456789`) was one the API
+  rejects. Numbers are in national format, without the country code; the payout
+  example no longer hard-codes a recipient.
 - The type-check step failed on a clean checkout (the examples imported the
   package under a name the compiler could not resolve before a build).
 

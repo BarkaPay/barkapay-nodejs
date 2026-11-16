@@ -205,7 +205,7 @@ describe('retries — requests that create something or move money', () => {
     await expect(
       client.payments.create({
         operator: 'ORANGE',
-        phone_number: '70123456',
+        phone_number: '74123456',
         amount: 100,
         order: { id: 'O-1' },
       }),
