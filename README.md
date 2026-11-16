@@ -285,7 +285,9 @@ Good to know:
   across re-deliveries.
 - Answer with any `2xx` quickly; anything else is retried with a growing delay.
 - A timestamp more than 300 seconds away from your clock is rejected (replay
-  protection). Change it with the 4th argument.
+  protection). Change it with the 4th argument — a positive number of seconds:
+  `0`, a negative or a non-finite value throws a `ConfigurationError`, as does an
+  empty secret.
 - `verifyWebhookSignature(rawBody, header, secret)` returns a boolean if you prefer
   to parse the body yourself.
 
@@ -293,7 +295,14 @@ Good to know:
 
 Every failure throws an error that extends `PayHubError`. API errors extend
 `ApiError` and carry `code`, `httpStatus`, `requestId` (quote it to support),
-`errors` (field → messages), `data` and `retryAfter`.
+`errors` (field → messages), `data`, `retryAfter` and `headers` (`retry-after`,
+`x-ratelimit-limit`, `x-ratelimit-remaining`, `x-request-id`). A `NetworkError`
+carries the `requestId` the SDK sent.
+
+A `2xx` whose body is not the expected JSON envelope (an HTML page, an empty body,
+a JSON object without the resource) throws an `ApiError` with
+`code: 'invalid_response'` — never an empty object passed off as a success. After a
+create call it means "outcome unknown", not "refused": look the operation up.
 
 | Error                        | HTTP            | When                                                                     |
 | ---------------------------- | --------------- | ------------------------------------------------------------------------ |
@@ -343,15 +352,18 @@ Failed payments and transfers explain themselves with a stable `reasonCode`
 
 ## Retries, timeouts and safe replays
 
-- **Timeout** — each attempt is abandoned after `timeoutMs` (30 s by default).
+- **Timeout** — each attempt is abandoned after `timeoutMs` (40 s by default: the
+  hub itself answers 503 after 30 s, so you receive its verdict rather than an
+  ambiguous local timeout).
 - **Automatic retries** (`maxRetries`, 2 by default, exponential backoff with
-  jitter, `Retry-After` honoured):
-  - reads (`get`, `list`, `balance`, …) and idempotent changes to a payment link
-    (`update`, `cancel`, `pause`, `resume`) are retried on connection failures,
-    timeouts and `408 / 429 / 502 / 503 / 504`;
-  - calls that **create something or move money** (`payments.create`,
-    `payments.confirmOtp`, `transfers.create`, `paymentLinks.create`, …) are
-    retried on `429` only — the one answer that guarantees nothing was done.
+  jitter, `Retry-After` honoured up to 10 s — a longer wait is handed back to you
+  as a `RateLimitError` with `retryAfter`):
+  - reads (`get`, `list`, `balance`, …) are retried on connection failures,
+    timeouts and `429 / 502 / 503 / 504`;
+  - writes (`payments.create`, `payments.confirmOtp`, `payments.resendOtp`,
+    `transfers.create`, `paymentLinks.create` / `update` / `cancel` / `pause` /
+    `resume`) are retried on `429` only — the one answer that guarantees nothing
+    was done.
 - **After a timeout or a 5xx on a create call, the outcome is unknown.** The API has
   no idempotency-key header, so the SDK never re-sends it for you. Do this instead:
 
@@ -415,23 +427,31 @@ const client = new PayHub({
   apiKey: process.env.BARKAPAY_API_KEY, // or keyId + secret
   country: 'bf',
   baseUrl: 'https://hub.barkapay.com', // default
-  timeoutMs: 30000, // per attempt
+  timeoutMs: 40000, // per attempt
   maxRetries: 2, // 0 disables automatic retries
   fetch: globalThis.fetch, // any fetch-compatible function (proxy, tests)
 });
 ```
 
+`baseUrl` must be `https://`. Plain `http://` is accepted for a loopback host only
+(`localhost`, `127.0.0.1`, `[::1]`) — or, when you pass your own `fetch`, for a mock
+server on another host. It is always refused for a barkapay host.
+
 Rate limits apply per route family; every response of the API carries
 `x-ratelimit-limit` and `x-ratelimit-remaining`, and a `429` carries `Retry-After`
-(exposed as `error.retryAfter`).
+(exposed as `error.retryAfter`, the others as `error.headers`).
 
 ## Security notes
 
 - The API key is held in private fields: it does not appear in `console.log`,
   `util.inspect` or `JSON.stringify` output, nor in the errors the SDK throws.
-- Redirects are never followed, so the key cannot be replayed against another URL.
+- Redirects are never followed (a `3xx` is an error), so the key cannot be replayed
+  against another URL; plain `http://` is refused outside of loopback (see
+  Configuration).
 - Identifiers and country codes are validated and encoded before they are placed
-  in a URL.
+  in a URL: an empty identifier, `.`, `..`, or one containing `/`, `?`, `#` or a
+  control character is refused before any request; a country code is two letters.
+- A response body larger than 10 MiB is refused (`NetworkError`).
 - Webhook signatures are compared in constant time; verify every delivery before
   trusting it.
 
