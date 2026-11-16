@@ -1,24 +1,30 @@
 import type { ApiClient } from '../apiClient';
+import type { CallOptions, OperatorsAvailability, OperatorsInfo } from '../types';
 import { coerceObject } from '../util';
-import type { CallOptions } from '../types';
 
 export class Operators {
-  constructor(private readonly api: ApiClient) {}
+  readonly #api: ApiClient;
 
-  /** Real-time payment/transfer availability per operator. */
-  async availability(options: CallOptions = {}): Promise<Record<string, unknown>> {
-    const env = await this.api.request('GET', 'operators/availability', {
+  constructor(api: ApiClient) {
+    this.#api = api;
+  }
+
+  /** Real-time payment/transfer availability per operator (`operational`, `degraded`, `down`). */
+  async availability(options: CallOptions = {}): Promise<OperatorsAvailability> {
+    const env = await this.#api.request('GET', 'operators/availability', {
       country: options.country,
     });
     return coerceObject(env, 'data') ?? {};
   }
 
   /**
-   * Operator capabilities (OTP requirement, amount bounds, instructions). This
-   * is the authoritative list of operators for the country.
+   * Operator capabilities (OTP requirement, amount bounds, payer instructions).
+   * This is the authoritative list of operators for the country.
    */
-  async info(options: CallOptions = {}): Promise<Record<string, unknown>> {
-    const env = await this.api.request('GET', 'operators/info', { country: options.country });
+  async info(options: CallOptions = {}): Promise<OperatorsInfo> {
+    const env = await this.#api.request('GET', 'operators/info', {
+      country: options.country,
+    });
     return coerceObject(env, 'data') ?? {};
   }
 }

@@ -5,9 +5,11 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
-  sourcemap: true,
+  sourcemap: false,
   treeshake: true,
   target: 'node18',
+  // Keep `node:crypto` as written (portable to other server runtimes).
+  removeNodeProtocol: false,
   outDir: 'dist',
   outExtension({ format }) {
     return { js: format === 'cjs' ? '.cjs' : '.mjs' };

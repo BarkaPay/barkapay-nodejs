@@ -23,9 +23,14 @@ export function coerceInt(data: Record<string, unknown>, key: string): number | 
   return null;
 }
 
+export function coerceBool(data: Record<string, unknown>, key: string): boolean | null {
+  const value = data[key];
+  return typeof value === 'boolean' ? value : null;
+}
+
 /**
- * Amount as returned by the API (whole number for fiat, decimal string for
- * crypto). Returned as-is to avoid lossy coercion.
+ * Amount as returned by the API (a JSON number for mobile money). Returned
+ * as-is to avoid lossy coercion.
  */
 export function coerceAmount(
   data: Record<string, unknown>,
@@ -33,6 +38,18 @@ export function coerceAmount(
 ): number | string | null {
   const value = data[key];
   return typeof value === 'number' || typeof value === 'string' ? value : null;
+}
+
+/**
+ * A decimal the API documents as a string ("6.25") but that some responses
+ * still emit as a JSON number (`0`). Always handed back as a string.
+ */
+export function coerceDecimal(data: Record<string, unknown>, key: string): string | null {
+  const value = data[key];
+  if (typeof value === 'string') {
+    return value;
+  }
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : null;
 }
 
 export function coerceObject(
@@ -43,9 +60,22 @@ export function coerceObject(
   return isRecord(value) ? value : null;
 }
 
-export function coerceArray(data: Record<string, unknown>, key: string): unknown[] | null {
+export function coerceArray(
+  data: Record<string, unknown>,
+  key: string,
+): unknown[] | null {
   const value = data[key];
   return Array.isArray(value) ? value : null;
+}
+
+export function coerceStrArray(
+  data: Record<string, unknown>,
+  key: string,
+): string[] | null {
+  const value = data[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : null;
 }
 
 /** Decode a JSON object. Returns null for empty input or anything not an object. */

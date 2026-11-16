@@ -1,25 +1,33 @@
+// Minimal webhook receiver (no framework). Mount it at the URL registered on
+// your API application.
+//   BARKAPAY_WEBHOOK_SECRET="whsec_…" npx tsx examples/webhook.ts
 import { createServer } from 'node:http';
 
-import { SignatureVerificationError, parseWebhook } from 'barkapay-payhub';
+import {
+  SignatureVerificationError,
+  parseWebhook,
+  type WebhookEvent,
+} from 'barkapay-payhub';
 
-const SECRET = process.env.PAYHUB_WEBHOOK_SECRET ?? 'whsec_xxx';
+const SECRET = process.env.BARKAPAY_WEBHOOK_SECRET ?? '';
+if (SECRET === '') {
+  throw new Error('Set BARKAPAY_WEBHOOK_SECRET to the whsec_… secret of your webhook.');
+}
 
-// Minimal webhook receiver. Mount this at your registered endpoint URL.
+// Deliveries are at-least-once: remember what you already handled.
+const handled = new Set<string>();
+
 const server = createServer((req, res) => {
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', () => {
-    // Verify against the RAW body before trusting anything.
-    const rawBody = Buffer.concat(chunks).toString('utf8');
-    const signature = req.headers['payhub-signature'];
+    // The RAW bytes, exactly as received — never a re-serialised object.
+    const rawBody = Buffer.concat(chunks);
 
-    let event: Record<string, unknown>;
+    let event: WebhookEvent;
     try {
-      event = parseWebhook(
-        rawBody,
-        typeof signature === 'string' ? signature : '',
-        SECRET,
-      ) as Record<string, unknown>;
+      // Node lower-cases header names.
+      event = parseWebhook(rawBody, req.headers['barkapay-signature'], SECRET);
     } catch (error) {
       if (error instanceof SignatureVerificationError) {
         res.writeHead(400).end();
@@ -28,13 +36,22 @@ const server = createServer((req, res) => {
       throw error;
     }
 
-    // There is no `event` field — derive it from `type` + `status`.
-    const { type, status, public_id: publicId } = event;
+    if (!handled.has(event.event_id)) {
+      handled.add(event.event_id);
 
-    // TODO: deduplicate on publicId (retries deliver the same body) and update your order.
-    // e.g. (type === 'payment' && status === 'SUCCESSFUL') => mark paid.
-    console.log(`webhook: ${String(type)} ${String(status)} ${String(publicId)}`);
+      // There is no `event` field — derive it from `type` + `status`.
+      if (event.type === 'payment' && event.status === 'SUCCESSFUL') {
+        console.log(`Order ${event.order_id ?? '?'} is paid (${event.public_id})`);
+      } else if (event.type === 'payment') {
+        console.log(
+          `Payment ${event.public_id} ended ${event.status}: ${event.reason_code ?? 'no reason'}`,
+        );
+      } else {
+        console.log(`Transfer ${event.public_id} ended ${event.status}`);
+      }
+    }
 
+    // Answer 2xx fast; do slow work after responding.
     res.writeHead(200).end('ok');
   });
 });

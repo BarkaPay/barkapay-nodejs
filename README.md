@@ -1,17 +1,18 @@
-# PayHub Node.js SDK
+# barkapay Node.js SDK
 
-Official Node.js / TypeScript client for the [PayHub](https://payhub.africa/developers)
-payments API — mobile money & crypto, one API across countries.
+Official Node.js / TypeScript client for the [barkapay API](https://payhub.africa/developers) —
+mobile money collections, payouts and payment links across West Africa, behind one API.
 
-- **Zero runtime dependencies** — uses the global `fetch` (Node 18+) and `node:crypto`.
+- **Zero runtime dependencies** — the global `fetch` (Node 18+) and `node:crypto`, nothing else.
 - Dual **ESM + CommonJS** build with bundled **type definitions**.
-- Typed payments, transfers and balance objects.
-- Built-in webhook signature verification.
-- Automatic retries on transient errors (429 / 503 / network).
+- Typed payments, transfers, payment links, balance and errors.
+- Webhook signature verification built in.
+- Safe by default: timeouts, retries only where a retry cannot move money twice,
+  redirects never followed, API key never printed.
 
 ## Requirements
 
-Node **18+** (for the global `fetch`).
+Node **18 or later**.
 
 ## Install
 
@@ -24,25 +25,21 @@ npm install barkapay-payhub
 ```ts
 import { PayHub } from 'barkapay-payhub';
 
-const payhub = new PayHub({
-  apiKey: 'pk_live_xxx:sk_live_yyy', // the "key_id:secret" you copy from the dashboard
-  country: 'bf',                     // default country, overridable per call
+const barkapay = new PayHub({
+  apiKey: process.env.BARKAPAY_API_KEY, // "key_id:secret", copied from your dashboard
+  country: 'bf', // default country, overridable per call
 });
 
-const payment = await payhub.payments.create({
+const payment = await barkapay.payments.create({
   operator: 'ORANGE',
-  phone_number: '50123456789',
+  phone_number: '70123456',
   amount: 10000,
-  otp: '123456',                     // only for synchronous-OTP operators (e.g. Orange)
-  order: { id: 'ORDER-2026-001' },
+  otp: '123456', // only for operators that take the payer's OTP up-front
+  order: { id: 'ORDER-2026-001', unique: true },
 });
 
 console.log(payment.publicId, payment.status);
 ```
-
-> **Authentication:** pass the raw `key_id:secret` (or `keyId` + `secret` separately).
-> The SDK adds the `Bearer` prefix — never include the word `Bearer` yourself
-> (an accidental `Bearer ` prefix is forgiven).
 
 CommonJS works too:
 
@@ -50,116 +47,395 @@ CommonJS works too:
 const { PayHub } = require('barkapay-payhub');
 ```
 
+> **Authentication** — pass the raw `key_id:secret` (or `keyId` and `secret` separately).
+> The SDK adds the `Bearer` prefix itself. Keep the key on your server: never ship it
+> in a browser or a mobile app.
+
+### Countries
+
+Every call targets one country: `bf` (Burkina Faso), `bj` (Bénin) or `sn` (Sénégal).
+Set a default on the client and override it per call when needed:
+
+```ts
+await barkapay.balance.get({ country: 'sn' });
+await barkapay.ping('bj');
+```
+
 ## Payments
 
 ```ts
-await payhub.payments.create({ operator, phone_number, amount, order });
-await payhub.payments.get('pay_… or order_id');          // by public_id or your order_id
-await payhub.payments.list({ status: 'SUCCESSFUL', per_page: 50 }); // { data, meta }
-await payhub.payments.confirmOtp(publicId, '123456');    // for AWAITING_OTP payments
-await payhub.payments.resendOtp(publicId);
+// Charge a payer.
+const payment = await barkapay.payments.create({
+  operator: 'MOOV',
+  phone_number: '60123456',
+  amount: 5000,
+  order: { id: 'ORDER-2026-002', unique: true, data: { cart: '42' } },
+});
+
+// Look it up later, by its publicId or by your order id.
+await barkapay.payments.get(payment.publicId);
+await barkapay.payments.get('ORDER-2026-002');
+// (An order id shaped like a UUID or containing "/" cannot be used here:
+//  filter the list instead — list({ order_id }).)
+
+// List, newest first.
+const page = await barkapay.payments.list({
+  status: 'SUCCESSFUL',
+  per_page: 50,
+  page: 1,
+});
+console.log(page.data.length, page.meta?.total);
 ```
 
-The flow depends on the operator — always branch on the returned `status`:
-synchronous (`SUCCESSFUL` / `FAILED`), `AWAITING_OTP` (confirm step), or
-`PROCESSING_OPERATOR` (final outcome arrives by webhook).
+What happens next depends on the operator — **always branch on `status`**:
 
-Every call accepts a per-call country override: `payhub.payments.get(id, { country: 'sn' })`.
+| `status`                          | Meaning                                                      | What to do                          |
+| --------------------------------- | ------------------------------------------------------------ | ----------------------------------- |
+| `SUCCESSFUL`                      | Paid.                                                        | Deliver.                            |
+| `AWAITING_OTP`                    | The payer received a code by SMS.                            | Ask for it, then call `confirmOtp`. |
+| `PROCESSING_OPERATOR`             | The payer is approving on their phone (or on `redirectUrl`). | Wait for the webhook.               |
+| `FAILED` / `EXPIRED` / `CANCELED` | Final, not paid.                                             | See `reasonCode`.                   |
+
+```ts
+// OTP step, for operators that send the code after creation.
+// The OTP is a string: a leading zero is significant.
+const confirmed = await barkapay.payments.confirmOtp(publicId, otpFromPayer);
+await barkapay.payments.resendOtp(publicId); // the payer did not get the SMS
+```
+
+`barkapay.operators.info()` tells you, per operator, whether an OTP is required
+(`otp_required`), the amount bounds and the instructions to show the payer.
+
+A payment the operator or the payer **refuses** rejects with `PaymentFailedError`;
+the refused payment is on the error:
+
+```ts
+import { PaymentFailedError } from 'barkapay-payhub';
+
+try {
+  await barkapay.payments.create({
+    operator: 'ORANGE',
+    phone_number: '70123456',
+    amount: 10000,
+    otp: '123456',
+    order: { id: orderId, unique: true },
+  });
+} catch (error) {
+  if (error instanceof PaymentFailedError) {
+    console.log(error.payment?.publicId, error.payment?.reasonCode); // e.g. "payer_insufficient_funds"
+  } else {
+    throw error;
+  }
+}
+```
+
+List filters: `status`, `operator`, `phone_number`, `channel`, `order_id`, `page`,
+`per_page` (max 200), `amount` **with** `amount_operator` (`<`, `=`, `>`, `<=`, `>=`),
+and `from_date` **with** `to_date` (a date range needs both ends).
+
+## Payment links
+
+A payment link is a page on the barkapay-hosted checkout: your customer opens it,
+picks an operator and pays. No checkout to build.
+
+```ts
+const link = await barkapay.paymentLinks.create({
+  title: 'Invoice #1234',
+  amount: { type: 'fixed', value: 25000 }, // or { type: 'open' } / { type: 'range', min, max }
+  usage: 'single', // closed by the first successful payment; 'multi' = reusable
+  order: { id: 'INV-1234' },
+  redirect: { success_url: 'https://shop.example/thanks' },
+});
+
+console.log(link.url); // share it with your customer
+```
+
+```ts
+await barkapay.paymentLinks.get(linkId); // by "PL-…" id or by slug
+await barkapay.paymentLinks.list({ status: 'active', per_page: 25 });
+await barkapay.paymentLinks.update(linkId, {
+  title: 'Invoice #1234 (updated)',
+  description: null,
+});
+await barkapay.paymentLinks.pause(linkId); // the checkout refuses new payers
+await barkapay.paymentLinks.resume(linkId);
+await barkapay.paymentLinks.cancel(linkId); // for good
+
+// Payments made through the link (in the country you call).
+const paid = await barkapay.paymentLinks.listPayments(linkId, { status: 'SUCCESSFUL' });
+console.log(paid.data.length, paid.paymentLink?.stats.totalCollected);
+```
+
+Only `title`, `description`, `expires_at` and `redirect` can change after creation.
+`pause` and `resume` return the link unchanged when it is not in the expected state:
+check `status` on the result. Payments made through a link carry
+`channel: 'hosted'` and `linkPublicId`.
+
+`payments.create` can also create a link — pass `channel: 'hosted'` with the same
+fields. It then resolves to a `PaymentLink` instead of a `Payment`; tell them
+apart with `object`:
+
+```ts
+const result = await barkapay.payments.create({
+  channel: 'hosted',
+  title: 'Invoice #1234',
+  amount: { type: 'fixed', value: 25000 },
+});
+
+console.log(result.object, result.url); // "payment_link"
+```
 
 ## Transfers
 
 ```ts
-await payhub.transfers.create({
+const transfer = await barkapay.transfers.create({
   operator: 'ORANGE',
-  phone_number: '50123456789',
+  phone_number: '70123456',
   amount: 50000,
-  order: { id: 'XFER-2026-001' },
+  order: { id: 'PAYOUT-2026-001', unique: true },
 });
-await payhub.transfers.get(id);
-await payhub.transfers.list({ from_date: '2026-06-01' });
+
+await barkapay.transfers.get(transfer.publicId); // or by your order id
+await barkapay.transfers.list({ from_date: '2026-11-01', to_date: '2026-11-30' });
 ```
+
+- `status: 'UNCERTAIN'` means the transfer was accepted but the operator has not
+  confirmed yet. **Do not send it again** — the verdict arrives by webhook.
+- The same transfer (same order id, number and amount) sent again within 60 seconds
+  is refused with `ConflictError`.
+- Errors: `InsufficientBalanceError` (top up first), `TransferFailedError`
+  (the operator refused; `error.transfer` holds the details).
 
 ## Balance & operators
 
 ```ts
-const balance = await payhub.balance.get();  // available / total / holds / currency
-// Crypto (cc) wallets fill `balance.balances` (one entry per asset/network) instead.
+const balance = await barkapay.balance.get(); // available / total / holds, as decimal strings
+console.log(balance.available, balance.currency);
 
-await payhub.operators.info();               // authoritative operator list for the country
-await payhub.operators.availability();
-await payhub.ping();
-await payhub.me();
+const { operators } = await barkapay.operators.info(); // authoritative operator list
+const { services } = await barkapay.operators.availability(); // operational / degraded / down
+
+await barkapay.ping(); // liveness
+const me = await barkapay.me(); // merchant + API application (scopes, permissions)
+console.log(operators, services, me.api_app?.scopes);
 ```
 
 ## Webhooks
 
-Verify the `PayHub-Signature` header against the **raw** request body:
+barkapay POSTs a JSON body to your endpoint when a payment or a transfer reaches a
+final state, signed in the **`Barkapay-Signature`** header
+(`t=<unix time>,v1=<HMAC-SHA256 of "{t}.{raw body}">`, keyed with your `whsec_…` secret).
 
 ```ts
+import { createServer } from 'node:http';
 import { parseWebhook, SignatureVerificationError } from 'barkapay-payhub';
 
+createServer((req, res) => {
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk: Buffer) => chunks.push(chunk));
+  req.on('end', () => {
+    try {
+      const event = parseWebhook(
+        Buffer.concat(chunks), // the RAW body
+        req.headers['barkapay-signature'],
+        process.env.BARKAPAY_WEBHOOK_SECRET ?? '',
+      );
+
+      if (event.type === 'payment' && event.status === 'SUCCESSFUL') {
+        // mark the order `event.order_id` as paid — once per `event.event_id`
+      }
+      res.writeHead(200).end();
+    } catch (error) {
+      res.writeHead(error instanceof SignatureVerificationError ? 400 : 500).end();
+    }
+  });
+}).listen(3000);
+```
+
+**The signature covers the raw bytes of the body.** A body that has been parsed and
+serialised again is different text and will never verify. With Express, that means
+`express.json()` must not run on the webhook route — use `express.raw()` there:
+
+```ts
+import express from 'express';
+import { parseWebhook } from 'barkapay-payhub';
+
+const app = express();
+
+// BEFORE any app.use(express.json()): keep the body as a Buffer on this route.
+app.post('/webhooks/barkapay', express.raw({ type: 'application/json' }), (req, res) => {
+  const event = parseWebhook(
+    req.body, // a Buffer, thanks to express.raw()
+    req.headers['barkapay-signature'],
+    process.env.BARKAPAY_WEBHOOK_SECRET ?? '',
+  );
+  console.log(event.type, event.status, event.public_id);
+  res.sendStatus(200);
+});
+```
+
+Passing a parsed object throws a `ConfigurationError` that says so, rather than
+failing silently.
+
+Good to know:
+
+- There is no `event` field in the body. Derive the event from `type` + `status`:
+  `payment` + `SUCCESSFUL` is `payment.succeeded`, `FAILED` is `payment.failed`,
+  `EXPIRED` is `payment.expired`; same for `transfer`.
+- Deliveries are **at-least-once**: deduplicate on `event_id`, which is stable
+  across re-deliveries.
+- Answer with any `2xx` quickly; anything else is retried with a growing delay.
+- A timestamp more than 300 seconds away from your clock is rejected (replay
+  protection). Change it with the 4th argument.
+- `verifyWebhookSignature(rawBody, header, secret)` returns a boolean if you prefer
+  to parse the body yourself.
+
+## Errors
+
+Every failure throws an error that extends `PayHubError`. API errors extend
+`ApiError` and carry `code`, `httpStatus`, `requestId` (quote it to support),
+`errors` (field → messages), `data` and `retryAfter`.
+
+| Error                        | HTTP            | When                                                                     |
+| ---------------------------- | --------------- | ------------------------------------------------------------------------ |
+| `ValidationError`            | 422 / 400       | Invalid request — see `error.errors`.                                    |
+| `AuthenticationError`        | 401             | Missing or wrong API key.                                                |
+| `AuthorizationError`         | 403 / 410 / 451 | Missing scope, IP not allowed, account suspended or closed.              |
+| `NotFoundError`              | 404             | Unknown resource, endpoint or country.                                   |
+| `ConflictError`              | 409             | Duplicate (`order.unique`, or the same transfer sent again within 60 s). |
+| `InsufficientBalanceError`   | 400             | Your balance does not cover the transfer and its fees.                   |
+| `PaymentFailedError`         | 424             | The payer or the operator refused — `error.payment`.                     |
+| `TransferFailedError`        | 424             | The operator refused — `error.transfer`.                                 |
+| `RateLimitError`             | 429             | Too many requests — wait `error.retryAfter` seconds.                     |
+| `ServiceUnavailableError`    | 503             | barkapay or the operator is temporarily unavailable.                     |
+| `ServerError`                | other 5xx       | Something broke on our side.                                             |
+| `NetworkError`               | —               | No response (connection failed, or timed out: `error.timedOut`).         |
+| `ConfigurationError`         | —               | The SDK was called with invalid arguments.                               |
+| `SignatureVerificationError` | —               | A webhook could not be verified.                                         |
+
+```ts
+import { PayHubError, RateLimitError, ValidationError } from 'barkapay-payhub';
+
 try {
-  const event = parseWebhook(rawBody, signatureHeader, endpointSecret /* whsec_… */);
-  // No `event` field — derive it from event.type + event.status.
-  // Deduplicate on event.public_id (retries deliver the same body).
-} catch (err) {
-  if (err instanceof SignatureVerificationError) {
-    res.writeHead(400).end();
+  await barkapay.transfers.create({
+    operator: 'ORANGE',
+    phone_number: '70123456',
+    amount: 50000,
+    order: { id: orderId, unique: true },
+  });
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error(error.errors); // { phone_number: ["…"] }
+  } else if (error instanceof RateLimitError) {
+    console.error(`Retry in ${error.retryAfter ?? '?'} s`);
+  } else if (error instanceof PayHubError) {
+    console.error(error.name, error.message);
+  } else {
+    throw error;
   }
 }
 ```
 
-`verifyWebhookSignature(payload, header, secret, toleranceSeconds = 300): boolean`
-is also available if you only need a boolean. The signature is
-`v1 = HMAC-SHA256("{t}.{rawBody}")` keyed with your `whsec_` secret, compared in
-constant time with a 300-second timestamp tolerance.
+Failed payments and transfers explain themselves with a stable `reasonCode`
+(`payer_insufficient_funds`, `payer_refused`, `invalid_otp`, `otp_expired`,
+`recipient_invalid`, `operator_unavailable`, …; the full list is exported as
+`REASON_CODES`). Branch on the code; `reason` is its human-readable phrase and
+`providerReason` the operator's own wording, for your support team.
 
-## Errors
+## Retries, timeouts and safe replays
 
-Every API error throws a typed error extending `ApiError`
-(`code`, `httpStatus`, `requestId`, `errors`):
-
-| Error | When |
-|---|---|
-| `AuthenticationError` | 401 — bad credentials |
-| `AuthorizationError`  | 403/410/451 — not allowed |
-| `ValidationError`     | 422 — bad request (`.errors`) |
-| `NotFoundError`       | 404 |
-| `ConflictError`       | 409 — duplicate |
-| `RateLimitError`      | 429 |
-| `ServiceUnavailableError` | 503 — retryable |
-| `ServerError`         | other 5xx |
-| `NetworkError`        | request never reached a response |
-
-Catch everything from the SDK with `PayHubError`. Configuration mistakes throw
-`ConfigurationError`; webhook failures throw `SignatureVerificationError`.
+- **Timeout** — each attempt is abandoned after `timeoutMs` (30 s by default).
+- **Automatic retries** (`maxRetries`, 2 by default, exponential backoff with
+  jitter, `Retry-After` honoured):
+  - reads (`get`, `list`, `balance`, …) and idempotent changes to a payment link
+    (`update`, `cancel`, `pause`, `resume`) are retried on connection failures,
+    timeouts and `408 / 429 / 502 / 503 / 504`;
+  - calls that **create something or move money** (`payments.create`,
+    `payments.confirmOtp`, `transfers.create`, `paymentLinks.create`, …) are
+    retried on `429` only — the one answer that guarantees nothing was done.
+- **After a timeout or a 5xx on a create call, the outcome is unknown.** The API has
+  no idempotency-key header, so the SDK never re-sends it for you. Do this instead:
 
 ```ts
-import { PayHubError, ValidationError } from 'barkapay-payhub';
+import { ApiError, NetworkError } from 'barkapay-payhub';
+
+const params = {
+  operator: 'ORANGE',
+  phone_number: '70123456',
+  amount: 50000,
+  order: { id: orderId, unique: true }, // 1. one order id per operation, declared unique
+};
 
 try {
-  await payhub.payments.create({ /* … */ });
-} catch (err) {
-  if (err instanceof ValidationError) {
-    console.error(err.errors); // field → messages
-  } else if (err instanceof PayHubError) {
-    console.error(err.message);
+  await barkapay.transfers.create(params);
+} catch (error) {
+  const outcomeUnknown =
+    error instanceof NetworkError ||
+    (error instanceof ApiError && error.httpStatus >= 500);
+  if (!outcomeUnknown) throw error;
+
+  // 2. Did it go through after all? (A failed attempt carries it: error.transfer.)
+  const { data } = await barkapay.transfers.list({ order_id: orderId });
+  if (data.length > 0) {
+    console.log('Already created:', data[0]?.publicId, data[0]?.status);
+  } else {
+    // 3. It did not: send it again. `unique` guards the race, and a
+    //    ConflictError here means the first attempt is still being processed.
+    await barkapay.transfers.create(params);
   }
 }
+```
+
+## Pagination
+
+`list` calls return `{ data, meta }` where `meta` is
+`{ currentPage, lastPage, perPage, total }` (`lastPage` is not returned for
+payment links — compute it from `total` and `perPage`).
+
+```ts
+let page = 1;
+let lastPage = 1;
+
+do {
+  const { data, meta } = await barkapay.payments.list({ page, per_page: 100 });
+  for (const payment of data) {
+    console.log(payment.publicId, payment.status);
+  }
+  lastPage = meta?.lastPage ?? page;
+  page += 1;
+} while (page <= lastPage);
 ```
 
 ## Configuration
 
 ```ts
-new PayHub({
-  apiKey: 'key_id:secret',
+import { PayHub } from 'barkapay-payhub';
+
+const client = new PayHub({
+  apiKey: process.env.BARKAPAY_API_KEY, // or keyId + secret
   country: 'bf',
-  baseUrl: 'https://hub.barkapay.com',
-  maxRetries: 2,        // 429/503/network
-  timeoutMs: 30000,     // per-request timeout
-  fetch: customFetch,   // any fetch-compatible function (for tests/proxies)
+  baseUrl: 'https://hub.barkapay.com', // default
+  timeoutMs: 30000, // per attempt
+  maxRetries: 2, // 0 disables automatic retries
+  fetch: globalThis.fetch, // any fetch-compatible function (proxy, tests)
 });
 ```
+
+Rate limits apply per route family; every response of the API carries
+`x-ratelimit-limit` and `x-ratelimit-remaining`, and a `429` carries `Retry-After`
+(exposed as `error.retryAfter`).
+
+## Security notes
+
+- The API key is held in private fields: it does not appear in `console.log`,
+  `util.inspect` or `JSON.stringify` output, nor in the errors the SDK throws.
+- Redirects are never followed, so the key cannot be replayed against another URL.
+- Identifiers and country codes are validated and encoded before they are placed
+  in a URL.
+- Webhook signatures are compared in constant time; verify every delivery before
+  trusting it.
+
+Report a vulnerability privately — see [SECURITY.md](./SECURITY.md).
 
 ## License
 

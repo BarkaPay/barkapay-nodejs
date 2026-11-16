@@ -16,8 +16,10 @@
     "verbatimModuleSyntax": true,
     "baseUrl": ".",
     "paths": {
-      "@barkapay/payhub": ["./src/index.ts"]
-    }
+      "barkapay-payhub": ["./src/index.ts"]
+    },
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
   },
   "include": ["src", "tests", "examples", "*.config.ts"]
 }
