@@ -2,6 +2,7 @@ import { inspect } from 'node:util';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { ApiClient } from '../src/apiClient';
 import { ConfigurationError, NetworkError, PayHub } from '../src/index';
 import { FakeFetch, ok, type Reply } from './fakeFetch';
 
@@ -49,6 +50,40 @@ describe('the API key never leaks', () => {
     expect(dump).toContain('payments');
     expect(dump).not.toContain(SECRET);
     expect(dump).not.toContain(KEY_ID);
+  });
+
+  it('is held in private fields, down to the internal transport', () => {
+    const api = new ApiClient({
+      fetchFn: new FakeFetch([]).fn,
+      authorization: `Bearer ${API_KEY}`,
+      baseUrl: 'https://hub.barkapay.com',
+      defaultCountry: 'bf',
+      maxRetries: 0,
+      timeoutMs: 1000,
+      userAgent: 'test',
+    });
+
+    // No own property at all: nothing for a serializer or a debugger dump to pick up.
+    expect(Reflect.ownKeys(api)).toEqual([]);
+    const dump = inspect(api, {
+      depth: Infinity,
+      showHidden: true,
+      customInspect: false,
+    });
+    expect(dump).not.toContain(SECRET);
+    expect(dump).not.toContain('Bearer');
+    expect(JSON.stringify(api)).not.toContain(SECRET);
+
+    const { payhub } = client();
+    for (const resource of [
+      payhub.payments,
+      payhub.paymentLinks,
+      payhub.transfers,
+      payhub.balance,
+      payhub.operators,
+    ]) {
+      expect(Reflect.ownKeys(resource)).toEqual([]);
+    }
   });
 
   it('is absent from console.log-style string conversions', () => {
