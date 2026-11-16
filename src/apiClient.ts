@@ -22,6 +22,12 @@ const KEPT_HEADERS = [
   'x-ratelimit-remaining',
 ] as const;
 const REDACTED = '[redacted]';
+/**
+ * Hard cap on a response body. API responses are a few kilobytes; anything
+ * larger is not the API, and is refused before it can exhaust the memory of
+ * the integration.
+ */
+export const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 /**
  * When may a request be sent again automatically?
@@ -231,7 +237,7 @@ export class ApiClient {
     const fetchFn = this.#fetchFn;
     const exchange = (async (): Promise<RawResponse> => {
       const response = await fetchFn(url, init);
-      const text = await response.text();
+      const text = await readCapped(response);
       const kept: Record<string, string> = {};
       for (const name of KEPT_HEADERS) {
         const value = readHeader(response, name);
@@ -426,6 +432,76 @@ export function parseRetryAfter(value: string | null): number | null {
     return null;
   }
   return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+interface ByteReader {
+  read(): Promise<{ done: boolean; value?: Uint8Array }>;
+  cancel(reason?: unknown): Promise<void>;
+}
+
+function streamOf(response: PayHubResponse): ByteReader | null {
+  const body: unknown = (response as { body?: unknown }).body;
+  if (typeof body !== 'object' || body === null) {
+    return null;
+  }
+  const getReader: unknown = (body as { getReader?: unknown }).getReader;
+  return typeof getReader === 'function' ? (getReader.call(body) as ByteReader) : null;
+}
+
+function tooLarge(): Error {
+  return new Error('The response body exceeds the maximum accepted size');
+}
+
+/**
+ * The response body as text, refusing more than {@link MAX_RESPONSE_BYTES}:
+ * up front when the size is announced, while it streams in otherwise (a
+ * `fetch` response exposes `body`), and after the fact for a minimal
+ * transport that only implements `text()`.
+ */
+async function readCapped(response: PayHubResponse): Promise<string> {
+  const declared = readHeader(response, 'content-length');
+  if (
+    declared !== null &&
+    /^\d+$/.test(declared.trim()) &&
+    Number(declared) > MAX_RESPONSE_BYTES
+  ) {
+    throw tooLarge();
+  }
+
+  const reader = streamOf(response);
+  if (reader === null) {
+    const text = await response.text();
+    if (text.length > MAX_RESPONSE_BYTES) {
+      throw tooLarge();
+    }
+    return text;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (value === undefined) {
+      continue;
+    }
+    total += value.byteLength;
+    if (total > MAX_RESPONSE_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
 }
 
 function readHeader(response: PayHubResponse, name: string): string | null {
