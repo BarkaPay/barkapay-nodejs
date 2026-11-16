@@ -107,13 +107,6 @@ function assertSignature(
 
   const { timestamp, signatures } = parsed;
 
-  // A tolerance of 0 (or less) switches the replay window off — not recommended.
-  if (tolerance > 0 && Math.abs(Math.floor(Date.now() / 1000) - timestamp) > tolerance) {
-    throw new SignatureVerificationError(
-      'Webhook timestamp is outside the tolerance window.',
-    );
-  }
-
   // Sign exactly what was received: the timestamp digits as sent, then the body bytes.
   const expected = createHmac('sha256', secret)
     .update(`${parsed.rawTimestamp}.`, 'utf8')
@@ -132,6 +125,15 @@ function assertSignature(
 
   if (!matched) {
     throw new SignatureVerificationError('Webhook signature mismatch.');
+  }
+
+  // Checked after the signature, so only an authentic delivery can be told
+  // "too old". A tolerance of 0 (or less) switches the replay window off —
+  // not recommended.
+  if (tolerance > 0 && Math.abs(Math.floor(Date.now() / 1000) - timestamp) > tolerance) {
+    throw new SignatureVerificationError(
+      'Webhook timestamp is outside the tolerance window.',
+    );
   }
 
   return body;
