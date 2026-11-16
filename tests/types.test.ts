@@ -5,7 +5,6 @@ import {
   parseWebhook,
   verifyWebhookSignature,
   type FetchFn,
-  type HostedPaymentCreateParams,
   type ListFilters,
   type Payment,
   type PaymentCreateParams,
@@ -32,7 +31,7 @@ const minimalFake: FetchFn = () =>
 const client = new PayHub({ apiKey: 'k:s', country: 'bf', fetch: minimalFake });
 
 describe('public types', () => {
-  it('payments.create is overloaded on `channel`', () => {
+  it('payments.create is a direct payment and resolves to a Payment', () => {
     const direct = () =>
       client.payments.create({
         operator: 'ORANGE',
@@ -41,50 +40,15 @@ describe('public types', () => {
         order: { id: 'O-1' },
       });
     expectTypeOf(direct).returns.resolves.toEqualTypeOf<Payment>();
-
-    const explicitDirect = () =>
-      client.payments.create({
-        channel: 'direct',
-        operator: 'ORANGE',
-        phone_number: '74123456',
-        amount: 100,
-        order: { id: 'O-1' },
-      });
-    expectTypeOf(explicitDirect).returns.resolves.toEqualTypeOf<Payment>();
-
-    const hosted = () =>
-      client.payments.create({
-        channel: 'hosted',
-        title: 'Invoice',
-        amount: { type: 'fixed', value: 100 },
-      });
-    expectTypeOf(hosted).returns.resolves.toEqualTypeOf<PaymentLink>();
-
-    const either = (params: PaymentCreateParams | HostedPaymentCreateParams) =>
-      client.payments.create(params);
-    expectTypeOf(either).returns.resolves.toEqualTypeOf<Payment | PaymentLink>();
+    expectTypeOf(client.payments.create)
+      .parameter(0)
+      .toEqualTypeOf<PaymentCreateParams>();
   });
 
-  it('the create result is a discriminated union on `object`', () => {
-    const narrow = (result: Payment | PaymentLink) => {
-      if (result.object === 'payment_link') {
-        expectTypeOf(result).toEqualTypeOf<PaymentLink>();
-        return result.url;
-      }
-      expectTypeOf(result).toEqualTypeOf<Payment>();
-      return result.status;
-    };
-    expectTypeOf(narrow).toBeFunction();
-  });
-
-  it('a hosted call cannot be mistaken for a direct one', () => {
+  it('payment-link fields are not accepted by payments.create', () => {
     const linkFields = { title: 'Invoice', amount: { type: 'fixed' as const, value: 1 } };
-    const odd = { channel: 'ussd' as const, operator: 'X', phone_number: '1', amount: 1 };
-
-    // @ts-expect-error — link fields without `channel: 'hosted'` match no overload.
+    // @ts-expect-error — a hosted checkout is `paymentLinks.create`, not `payments.create`.
     void (() => client.payments.create(linkFields));
-    // @ts-expect-error — unknown channel.
-    void (() => client.payments.create({ ...odd, order: { id: 'o' } }));
   });
 
   it('resources resolve to their typed results', () => {
