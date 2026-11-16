@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { ApiClient, parseRetryAfter, type ApiClientOptions } from '../src/apiClient';
+import {
+  ApiClient,
+  MAX_RESPONSE_BYTES,
+  parseRetryAfter,
+  type ApiClientOptions,
+} from '../src/apiClient';
 import {
   ApiError,
   NetworkError,
@@ -600,5 +605,107 @@ describe('parseRetryAfter', () => {
     expect(parseRetryAfter('soon')).toBeNull();
     expect(parseRetryAfter('-5')).toBeNull();
     expect(parseRetryAfter('1.5')).toBeNull();
+  });
+});
+
+describe('hostile responses — size cap', () => {
+  const big = MAX_RESPONSE_BYTES + 1;
+
+  it('refuses an announced oversized body before reading it', async () => {
+    let read = false;
+    const { api } = harness(
+      [
+        {
+          status: 200,
+          headers: { get: (n: string) => (n === 'content-length' ? String(big) : null) },
+          text: () => {
+            read = true;
+            return Promise.resolve('{}');
+          },
+        },
+      ],
+      { maxRetries: 0 },
+    );
+
+    const error = await api.request('GET', 'ping').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).message).toContain('maximum accepted size');
+    expect(read).toBe(false);
+  });
+
+  it('cuts off a streamed body as soon as it crosses the cap', async () => {
+    let served = 0;
+    let cancelled = false;
+    const chunk = new Uint8Array(1024 * 1024);
+    const streamed: Reply = () =>
+      Promise.resolve({
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: () => {
+              served += 1;
+              return Promise.resolve({ done: false, value: chunk });
+            },
+            cancel: () => {
+              cancelled = true;
+              return Promise.resolve();
+            },
+          }),
+        },
+        text: () => Promise.reject(new Error('text() must not be used')),
+      } as never);
+    const { api } = harness([streamed], { maxRetries: 0 });
+
+    const error = await api
+      .request('POST', 'payments', { body: {} })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(NetworkError);
+    expect((error as NetworkError).message).toContain('maximum accepted size');
+    expect(cancelled).toBe(true);
+    expect(served).toBeLessThanOrEqual(11);
+  });
+
+  it('refuses an oversized body from a text()-only transport', async () => {
+    const { api } = harness([textResponse(200, 'x'.repeat(big))], { maxRetries: 0 });
+
+    await expect(api.request('GET', 'ping')).rejects.toBeInstanceOf(NetworkError);
+  });
+
+  it('with the real fetch: a chunked oversized body never reaches the caller', async () => {
+    const { createServer } = await import('node:http');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      const piece = Buffer.alloc(256 * 1024, 120);
+      let sent = 0;
+      const pump = () => {
+        while (sent <= big) {
+          sent += piece.length;
+          if (!res.write(piece)) {
+            res.once('drain', pump);
+            return;
+          }
+        }
+        res.end();
+      };
+      pump();
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    const port = typeof address === 'object' && address !== null ? address.port : 0;
+
+    try {
+      const payhub = new PayHub({
+        apiKey: 'k_id:s_secret',
+        country: 'bf',
+        baseUrl: `http://127.0.0.1:${port}`,
+        maxRetries: 0,
+      });
+      const error = await payhub.ping().catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(NetworkError);
+      expect((error as NetworkError).message).toContain('maximum accepted size');
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
