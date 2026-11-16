@@ -31,7 +31,7 @@ function clientReturning(response: PayHubResponse | Error, maxRetries = 0): PayH
 
 const PAYMENT = {
   operator: 'ORANGE',
-  phone_number: '70123456',
+  phone_number: '74123456',
   amount: 100,
   order: { id: 'O-1' },
 };
@@ -162,7 +162,7 @@ describe('error mapping', () => {
           payment: {
             public_id: '0198d4a2-1b2c-7d3e-8f40-5a6b7c8d9e0f',
             amount: 10000,
-            phone_number: '70123456',
+            phone_number: '74123456',
             country: 'BF',
             operator: 'ORANGE',
             order_id: 'O-1',

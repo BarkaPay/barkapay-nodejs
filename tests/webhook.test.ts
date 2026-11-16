@@ -14,7 +14,7 @@ import {
 const SECRET = 'whsec_test_secret';
 /** A delivery body exactly as the webhook dispatcher serialises it. */
 const PAYLOAD =
-  '{"public_id":"0198d4a2-1b2c-7d3e-8f40-5a6b7c8d9e0f","amount":10000,"phone_number":"70123456","country":"BF","status":"SUCCESSFUL","order_id":"ORDER-1","provider_transaction_id":"MP2611.1234","order_data":null,"reason":null,"app_label":"Boutique","reason_code":null,"provider_reason":null,"link_public_id":null,"type":"payment","fees":"150.00","event_id":"dlv:0198d4a2:payment.succeeded:whk_1","timestamp":"2026-11-16T10:00:00+00:00"}';
+  '{"public_id":"0198d4a2-1b2c-7d3e-8f40-5a6b7c8d9e0f","amount":10000,"phone_number":"74123456","country":"BF","status":"SUCCESSFUL","order_id":"ORDER-1","provider_transaction_id":"MP2611.1234","order_data":null,"reason":null,"app_label":"Boutique","reason_code":null,"provider_reason":null,"link_public_id":null,"type":"payment","fees":"150.00","event_id":"dlv:0198d4a2:payment.succeeded:whk_1","timestamp":"2026-11-16T10:00:00+00:00"}';
 
 function hmac(
   payload: string | Buffer,

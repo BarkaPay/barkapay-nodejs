@@ -29,7 +29,7 @@ describe('PayHub client', () => {
 
     const payment = await client.payments.create({
       operator: 'ORANGE',
-      phone_number: '50123456789',
+      phone_number: '74123456',
       amount: 10000,
       order: { id: 'O1' },
     });
@@ -193,7 +193,7 @@ describe('PayHub client', () => {
 
     const transfer = await client.transfers.create({
       operator: 'ORANGE',
-      phone_number: '50123456789',
+      phone_number: '74123456',
       amount: 50000,
       order: { id: 'X1' },
     });
@@ -250,7 +250,7 @@ describe('PayHub client', () => {
 
     await client.payments.create({
       operator: 'ORANGE',
-      phone_number: '70123456',
+      phone_number: '74123456',
       amount: 100,
       otp: '012345',
       order: { id: 'O-1' },
@@ -314,7 +314,7 @@ describe('PayHub client', () => {
     await expect(
       client.transfers.create({
         operator: 'ORANGE',
-        phone_number: '70123456',
+        phone_number: '74123456',
         amount: 100,
         order: { id: 'X-1' },
       }),

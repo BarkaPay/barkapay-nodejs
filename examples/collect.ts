@@ -1,5 +1,5 @@
 // Collect money from a payer (mobile money).
-//   BARKAPAY_API_KEY="key_id:secret" npx tsx examples/collect.ts
+//   BARKAPAY_API_KEY="key_id:secret" BARKAPAY_PAYER_PHONE="…" npx tsx examples/collect.ts
 import {
   NetworkError,
   PayHub,
@@ -13,13 +13,21 @@ const barkapay = new PayHub({
   country: 'bf',
 });
 
+// National format, without the country code (8 digits in Burkina Faso).
+const payerPhone = process.env.BARKAPAY_PAYER_PHONE ?? '';
+
 async function main(): Promise<void> {
+  if (payerPhone === '') {
+    throw new Error(
+      'Set BARKAPAY_PAYER_PHONE to the number of a payer who agreed to the test.',
+    );
+  }
   const orderId = `ORDER-${Date.now()}`;
 
   try {
     const payment = await barkapay.payments.create({
       operator: 'ORANGE',
-      phone_number: '70123456',
+      phone_number: payerPhone,
       amount: 10000,
       // Orange takes the payer's OTP up-front. Keep it a string: "012345" is not 12345.
       otp: '123456',

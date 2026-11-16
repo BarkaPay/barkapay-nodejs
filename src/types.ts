@@ -365,6 +365,7 @@ export interface PaymentListParams extends ListFilters {
 
 /** Filters of `transfers.list` (newest first, 50 per page by default). */
 export interface TransferListParams extends ListFilters {
+  /** The API refuses `UNCERTAIN` and `UNRESOLVED` here (422): filter those client-side. */
   status?: TransferStatus | (string & {});
   operator?: string;
   phone_number?: string;
@@ -430,8 +431,9 @@ export interface OrderParams {
 export interface PaymentCreateParams {
   /** `direct` (default) charges the payer now. See {@link HostedPaymentCreateParams} for `hosted`. */
   channel?: 'direct';
-  /** Operator code, e.g. `ORANGE`, `MOOV`, `MTN`, `WAVE` (see `operators.info()`). */
+  /** Upper-case operator code, e.g. `ORANGE`, `MOOV`, `MTN`, `WAVE` (see `operators.info()`). */
   operator: string;
+  /** National format, without the country code (8 digits in `bf`, 9 in `sn`, 10 in `bj`). */
   phone_number: string;
   /** In the country's currency; at most 2 decimals. */
   amount: number | string;
@@ -446,8 +448,9 @@ export interface PaymentCreateParams {
 }
 
 export interface TransferCreateParams {
-  /** Operator code, e.g. `ORANGE`, `MOOV`, `MTN`, `WAVE` (see `operators.info()`). */
+  /** Upper-case operator code, e.g. `ORANGE`, `MOOV`, `MTN`, `WAVE` (see `operators.info()`). */
   operator: string;
+  /** National format, without the country code (8 digits in `bf`, 9 in `sn`, 10 in `bj`). */
   phone_number: string;
   /** In the country's currency; at most 2 decimals. */
   amount: number | string;
@@ -455,8 +458,9 @@ export interface TransferCreateParams {
   order: OrderParams | Record<string, unknown>;
   /**
    * Bypass the guard that refuses (409) a transfer carrying the same order id,
-   * recipient and amount as one sent in the last 60 seconds. Leave unset
-   * unless you really mean to pay twice.
+   * recipient, amount and operator as one sent in the last 60 seconds —
+   * whatever became of that first attempt. Leave unset unless you really mean
+   * to send it twice.
    */
   ignore_double_spend_risk?: boolean;
   [key: string]: unknown;

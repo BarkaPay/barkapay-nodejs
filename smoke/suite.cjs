@@ -203,7 +203,7 @@ async function run(sdk, label, packageVersion) {
         maxRetries: 3,
       }).payments.create({
         operator: 'ORANGE',
-        phone_number: '70123456',
+        phone_number: '74123456',
         amount: 100,
         order: { id: 'SMOKE-1', unique: true },
       }),

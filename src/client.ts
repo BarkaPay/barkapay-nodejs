@@ -50,7 +50,7 @@ export interface PayHubOptions {
  * const payhub = new PayHub({ apiKey: process.env.BARKAPAY_API_KEY, country: 'bf' });
  * const payment = await payhub.payments.create({
  *   operator: 'ORANGE',
- *   phone_number: '70123456',
+ *   phone_number: '74000000', // national format, without the country code
  *   amount: 10000,
  *   otp: '123456',
  *   order: { id: 'ORDER-2026-001', unique: true },

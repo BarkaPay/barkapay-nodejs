@@ -307,7 +307,7 @@ describe('paymentLinks', () => {
 describe('payments.create — channel', () => {
   const DIRECT = {
     operator: 'ORANGE',
-    phone_number: '70123456',
+    phone_number: '74123456',
     amount: 10000,
     otp: '012345',
     order: { id: 'ORDER-1', unique: true },

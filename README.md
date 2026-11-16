@@ -32,7 +32,7 @@ const barkapay = new PayHub({
 
 const payment = await barkapay.payments.create({
   operator: 'ORANGE',
-  phone_number: '70123456',
+  phone_number: '74000000', // national format, without the country code
   amount: 10000,
   otp: '123456', // only for operators that take the payer's OTP up-front
   order: { id: 'ORDER-2026-001', unique: true },
@@ -51,7 +51,7 @@ const { PayHub } = require('barkapay-payhub');
 > The SDK adds the `Bearer` prefix itself. Keep the key on your server: never ship it
 > in a browser or a mobile app.
 
-### Countries
+### Countries, operators and phone numbers
 
 Every call targets one country: `bf` (Burkina Faso), `bj` (Bénin) or `sn` (Sénégal).
 Set a default on the client and override it per call when needed:
@@ -61,13 +61,19 @@ await barkapay.balance.get({ country: 'sn' });
 await barkapay.ping('bj');
 ```
 
+- **Operators** are upper-case codes (`ORANGE`, `MOOV`, `MTN`, `WAVE`); the list for a
+  country, with amount bounds and OTP requirement, comes from `operators.info()`.
+- **Phone numbers** are in national format, **without the country code**: 8 digits in
+  Burkina Faso, 9 in Sénégal, 10 in Bénin. A number that does not belong to the
+  operator is refused with a `ValidationError`.
+
 ## Payments
 
 ```ts
 // Charge a payer.
 const payment = await barkapay.payments.create({
   operator: 'MOOV',
-  phone_number: '60123456',
+  phone_number: payerPhone,
   amount: 5000,
   order: { id: 'ORDER-2026-002', unique: true, data: { cart: '42' } },
 });
@@ -97,7 +103,8 @@ What happens next depends on the operator — **always branch on `status`**:
 | `FAILED` / `EXPIRED` / `CANCELED` | Final, not paid.                                             | See `reasonCode`.                   |
 
 ```ts
-// OTP step, for operators that send the code after creation.
+// OTP step, for operators that send the code after creation
+// (today: MOOV in Burkina Faso — these two calls only exist on `bf`).
 // The OTP is a string: a leading zero is significant.
 const confirmed = await barkapay.payments.confirmOtp(publicId, otpFromPayer);
 await barkapay.payments.resendOtp(publicId); // the payer did not get the SMS
@@ -115,7 +122,7 @@ import { PaymentFailedError } from 'barkapay-payhub';
 try {
   await barkapay.payments.create({
     operator: 'ORANGE',
-    phone_number: '70123456',
+    phone_number: payerPhone,
     amount: 10000,
     otp: '123456',
     order: { id: orderId, unique: true },
@@ -190,7 +197,7 @@ console.log(result.object, result.url); // "payment_link"
 ```ts
 const transfer = await barkapay.transfers.create({
   operator: 'ORANGE',
-  phone_number: '70123456',
+  phone_number: recipientPhone,
   amount: 50000,
   order: { id: 'PAYOUT-2026-001', unique: true },
 });
@@ -201,8 +208,11 @@ await barkapay.transfers.list({ from_date: '2026-11-01', to_date: '2026-11-30' }
 
 - `status: 'UNCERTAIN'` means the transfer was accepted but the operator has not
   confirmed yet. **Do not send it again** — the verdict arrives by webhook.
-- The same transfer (same order id, number and amount) sent again within 60 seconds
-  is refused with `ConflictError`.
+- The same transfer (same order id, number, amount and operator) sent again within
+  60 seconds is refused with `ConflictError` — even when the first attempt was
+  itself refused. Wait a minute, or use a new order id for a new attempt.
+- `list({ status })` accepts neither `UNCERTAIN` nor `UNRESOLVED`: filter those on
+  your side.
 - Errors: `InsufficientBalanceError` (top up first), `TransferFailedError`
   (the operator refused; `error.transfer` holds the details).
 
@@ -319,7 +329,7 @@ import { PayHubError, RateLimitError, ValidationError } from 'barkapay-payhub';
 try {
   await barkapay.transfers.create({
     operator: 'ORANGE',
-    phone_number: '70123456',
+    phone_number: recipientPhone,
     amount: 50000,
     order: { id: orderId, unique: true },
   });
@@ -361,7 +371,7 @@ import { ApiError, NetworkError } from 'barkapay-payhub';
 
 const params = {
   operator: 'ORANGE',
-  phone_number: '70123456',
+  phone_number: recipientPhone,
   amount: 50000,
   order: { id: orderId, unique: true }, // 1. one order id per operation, declared unique
 };
@@ -379,8 +389,9 @@ try {
   if (data.length > 0) {
     console.log('Already created:', data[0]?.publicId, data[0]?.status);
   } else {
-    // 3. It did not: send it again. `unique` guards the race, and a
-    //    ConflictError here means the first attempt is still being processed.
+    // 3. It did not: send it again. `unique` guards the race. A ConflictError
+    //    here means the first attempt reached the API less than 60 seconds ago
+    //    (still in progress, or refused): wait a minute and check again.
     await barkapay.transfers.create(params);
   }
 }

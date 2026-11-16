@@ -120,6 +120,9 @@ export class Payments {
   /**
    * Confirm a payment that is `AWAITING_OTP` with the code the payer received.
    * Pass the OTP as a string: a leading zero is significant.
+   *
+   * Only operators that send the OTP after creation use this step — today
+   * MOOV in Burkina Faso; the endpoint exists on `bf` only.
    */
   async confirmOtp(
     publicId: string,
@@ -134,7 +137,7 @@ export class Payments {
     return hydratePayment(expectResource(env, 'payment'));
   }
 
-  /** Send the payer a new OTP for a payment that is still `AWAITING_OTP`. */
+  /** Send the payer a new OTP for a payment that is still `AWAITING_OTP` (`bf` only, see `confirmOtp`). */
   async resendOtp(publicId: string, options: CallOptions = {}): Promise<void> {
     await this.#api.request(
       'POST',

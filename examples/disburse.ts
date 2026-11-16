@@ -1,5 +1,5 @@
 // Send money to a recipient (payout / transfer).
-//   BARKAPAY_API_KEY="key_id:secret" npx tsx examples/disburse.ts
+//   BARKAPAY_API_KEY="key_id:secret" BARKAPAY_RECIPIENT_PHONE="…" npx tsx examples/disburse.ts
 import {
   ConflictError,
   InsufficientBalanceError,
@@ -14,14 +14,23 @@ const barkapay = new PayHub({
   country: 'bf',
 });
 
+// National format, without the country code (8 digits in Burkina Faso).
+// ⚠️ This sends REAL money: only ever use a number you control.
+const recipientPhone = process.env.BARKAPAY_RECIPIENT_PHONE ?? '';
+
 async function main(): Promise<void> {
+  if (recipientPhone === '') {
+    throw new Error(
+      'Set BARKAPAY_RECIPIENT_PHONE to a number you control: this sends real money.',
+    );
+  }
   const orderId = `PAYOUT-${Date.now()}`;
 
   try {
     const transfer = await barkapay.transfers.create({
       operator: 'ORANGE',
-      phone_number: '70123456',
-      amount: 50000,
+      phone_number: recipientPhone,
+      amount: 500,
       order: { id: orderId, unique: true },
     });
 
@@ -38,7 +47,7 @@ async function main(): Promise<void> {
       console.error('Top up your balance first.');
     } else if (error instanceof ConflictError) {
       // This order id was already used (order.unique), or the same transfer
-      // was sent in the last 60 seconds.
+      // reached the API in the last 60 seconds.
       console.error(`Duplicate transfer: ${error.message}`);
     } else if (error instanceof TransferFailedError) {
       console.error(

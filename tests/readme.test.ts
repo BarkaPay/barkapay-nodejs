@@ -19,6 +19,8 @@ declare const orderId: string;
 declare const publicId: string;
 declare const linkId: string;
 declare const otpFromPayer: string;
+declare const payerPhone: string;
+declare const recipientPhone: string;
 `;
 
 /** A minimal stand-in for Express, which is not a dependency of this package. */
