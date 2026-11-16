@@ -1,37 +1,101 @@
 name: Release
 
-# Publishes to npm when a version tag (v*) is pushed.
-# Prerequisites (one-time, by a maintainer):
-#   - npm account + the @barkapay org/scope, with publish rights
-#   - repo secret NPM_TOKEN = an npm automation access token
-# Cut a release with:
-#   npm version <patch|minor|major>   # bumps package.json + creates the tag
-#   git push --follow-tags
+# Publishes `barkapay-payhub` to npm when a version tag (v*) is pushed.
+#
+# Authentication: npm TRUSTED PUBLISHING (OIDC). No npm token is stored in this
+# repository: npm trusts this exact workflow file in this exact repository and
+# hands it a short-lived credential for one publish. The version is published
+# with a provenance attestation.
+#
+# ── One-time setup on npmjs.com (package owner) ──────────────────────────────
+#   npmjs.com → Packages → barkapay-payhub → Settings → "Trusted Publisher"
+#   → "Select your publisher": GitHub Actions, then:
+#       Organization or user : BarkaPay          (case-sensitive)
+#       Repository           : payhub-nodejs
+#       Workflow filename    : release.yml       (file name only, with .yml)
+#       Environment name     : (leave empty)
+#       Allowed actions      : enable `npm publish` (direct publishing);
+#                              leave `npm dist-tag` disabled.
+#   A new trusted publisher must complete its first publish within 2 days,
+#   otherwise it expires: create it right before tagging.
+#   Requirements (met below): GitHub-hosted runner, `id-token: write`,
+#   Node >= 22.14 and npm >= 11.5.1, and `repository.url` in package.json
+#   pointing at this repository.
+#   Docs: https://docs.npmjs.com/trusted-publishers
+#
+# ── Fallback: classic token ──────────────────────────────────────────────────
+#   If no trusted publisher is configured, npm falls back on the token in the
+#   repository secret NPM_TOKEN, when it exists (a granular access token with
+#   read/write on `barkapay-payhub` only). npm tries OIDC first, so the secret
+#   can simply be deleted once trusted publishing works. With neither, the
+#   publish step fails with ENEEDAUTH and nothing is published.
+#
+# ── Cutting a release ────────────────────────────────────────────────────────
+#   Bump the version (package.json, package-lock.json, src/version.ts), update
+#   CHANGELOG.md, merge to main, then:
+#       git tag -a v1.2.3 -m "v1.2.3" && git push origin v1.2.3
 
 on:
   push:
     tags:
       - 'v*'
 
-permissions:
-  contents: read
+# Nothing by default; each job asks for exactly what it needs.
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm
+  verify:
+    # Runs third-party code (the dev dependencies): no id-token, no secret.
+    name: Verify and pack
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Tag must match the version (package.json, lockfile, src/version.ts)
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          lock="$(node -p "require('./package-lock.json').version")"
+          src="$(sed -n "s/^export const VERSION = '\(.*\)';$/\1/p" src/version.ts)"
+          echo "tag=$tag package.json=$pkg package-lock.json=$lock src/version.ts=$src"
+          if [ "$tag" != "$pkg" ] || [ "$tag" != "$lock" ] || [ "$tag" != "$src" ]; then
+            echo "::error::Tag v$tag does not match the version in package.json ($pkg), package-lock.json ($lock) and src/version.ts ($src)"
+            exit 1
+          fi
+          if ! grep -q "^## \[$tag\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no entry for $tag"
+            exit 1
+          fi
+
+      - name: Tag must point at a commit of main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME ($GITHUB_SHA) is not on main — refusing to publish."
+            exit 1
+          fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '20'
-          cache: npm
-          registry-url: 'https://registry.npmjs.org'
+          node-version: '24'
+          package-manager-cache: false # never use caching in release builds
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Dependency audit
+        run: npm audit
 
       - name: Lint (eslint)
         run: npm run lint
@@ -39,22 +103,79 @@ jobs:
       - name: Typecheck (tsc)
         run: npm run typecheck
 
-      - name: Build (tsup)
-        run: npm run build
+      - name: Format (prettier)
+        run: npm run format:check
 
       - name: Tests (vitest)
         run: npm test
 
-      - name: Verify tag matches package.json version
+      - name: Build (tsup)
+        run: npm run build
+
+      - name: Smoke test of the build
+        run: npm run test:smoke
+
+      - name: Package lint (publint)
+        run: npx --yes publint@0.3.25 --strict
+
+      - name: Type resolution for ESM and CJS consumers
+        run: npx --yes @arethetypeswrong/cli@0.18.5 --pack .
+
+      - name: Pack
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg="$(node -p "require('./package.json').version")"
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::Tag v$tag does not match package.json version $pkg"
+          npm pack --ignore-scripts
+          tar -tzf barkapay-payhub-*.tgz | sort
+          sha256sum barkapay-payhub-*.tgz
+
+      - name: Upload the tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: barkapay-payhub-*.tgz
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    # The only job allowed to mint an OIDC token. It runs no project code and
+    # installs nothing: it publishes the tarball that `verify` built and tested.
+    name: Publish to npm
+    needs: verify
+    runs-on: ubuntu-latest # trusted publishing requires a GitHub-hosted runner
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # OIDC: trusted publishing + provenance
+    steps:
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: npm must support trusted publishing (>= 11.5.1)
+        run: |
+          version="$(npm --version)"
+          echo "node $(node --version), npm $version"
+          lowest="$(printf '%s\n%s\n' "11.5.1" "$version" | sort -V | head -n 1)"
+          if [ "$lowest" != "11.5.1" ]; then
+            echo "::error::npm $version is older than 11.5.1, the first version with trusted publishing."
             exit 1
           fi
 
-      - name: Publish
-        run: npm publish --access public
+      - name: Download the tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+
+      - name: Publish (trusted publishing, falling back on NPM_TOKEN)
+        run: |
+          if [ -n "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret: present (used only if trusted publishing is not configured)."
+          else
+            echo "NPM_TOKEN secret: absent — trusted publishing (OIDC) is the only way in."
+          fi
+          sha256sum barkapay-payhub-*.tgz
+          npm publish ./barkapay-payhub-*.tgz --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
