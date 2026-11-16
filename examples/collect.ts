@@ -1,30 +1,75 @@
-import { PayHub, PayHubError } from 'barkapay-payhub';
+// Collect money from a payer (mobile money).
+//   BARKAPAY_API_KEY="key_id:secret" npx tsx examples/collect.ts
+import {
+  NetworkError,
+  PayHub,
+  PayHubError,
+  PaymentFailedError,
+  ValidationError,
+} from 'barkapay-payhub';
 
-const payhub = new PayHub({
-  apiKey: process.env.PAYHUB_API_KEY ?? 'pk_live_xxx:sk_live_yyy',
+const barkapay = new PayHub({
+  apiKey: process.env.BARKAPAY_API_KEY,
   country: 'bf',
 });
 
 async function main(): Promise<void> {
+  const orderId = `ORDER-${Date.now()}`;
+
   try {
-    // The OTP field is only needed for synchronous-OTP operators (e.g. Orange);
-    // most async operators (MTN, Wave) return PROCESSING_OPERATOR and complete
-    // via webhook. Always branch on the returned status.
-    const payment = await payhub.payments.create({
+    const payment = await barkapay.payments.create({
       operator: 'ORANGE',
-      phone_number: '50123456789',
+      phone_number: '70123456',
       amount: 10000,
+      // Orange takes the payer's OTP up-front. Keep it a string: "012345" is not 12345.
       otp: '123456',
-      order: { id: `ORDER-${Date.now()}` },
+      // `unique: true` makes a second call with the same id fail with a 409
+      // instead of charging the payer twice.
+      order: { id: orderId, unique: true },
     });
 
-    console.log(`Payment ${payment.publicId} — status ${payment.status ?? 'unknown'}`);
-  } catch (error) {
-    if (error instanceof PayHubError) {
-      console.error(`PayHub error: ${error.message}`);
-      return;
+    // The flow depends on the operator — always branch on the status.
+    switch (payment.status) {
+      case 'SUCCESSFUL':
+        console.log(
+          `Paid: ${payment.publicId} (fees ${payment.fees ?? '?'} ${payment.currency ?? ''})`,
+        );
+        break;
+      case 'AWAITING_OTP':
+        // The payer received a code by SMS: collect it, then
+        //   await barkapay.payments.confirmOtp(payment.publicId, code);
+        console.log(`Waiting for the payer's OTP: ${payment.publicId}`);
+        break;
+      default:
+        // PROCESSING_OPERATOR…: the final outcome arrives by webhook.
+        if (payment.redirectUrl !== null) {
+          console.log(`Send the payer to ${payment.redirectUrl}`);
+        }
+        console.log(
+          `Pending: ${payment.publicId} — status ${payment.status ?? 'unknown'}`,
+        );
     }
-    throw error;
+  } catch (error) {
+    if (error instanceof PaymentFailedError) {
+      // The operator or the payer refused. Final for this attempt.
+      console.error(
+        `Refused (${error.payment?.reasonCode ?? 'unknown'}): ${error.message}`,
+      );
+    } else if (error instanceof ValidationError) {
+      console.error('Invalid request:', error.errors);
+    } else if (error instanceof NetworkError) {
+      // Unknown outcome: the payment may exist. Look it up before retrying.
+      const { data } = await barkapay.payments.list({ order_id: orderId });
+      console.error(
+        data[0]
+          ? `It went through: ${data[0].status ?? '?'}`
+          : 'Not created — safe to retry.',
+      );
+    } else if (error instanceof PayHubError) {
+      console.error(`barkapay error: ${error.message}`);
+    } else {
+      throw error;
+    }
   }
 }
 

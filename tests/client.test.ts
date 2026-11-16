@@ -44,7 +44,9 @@ describe('PayHub client', () => {
     expect(call?.init.headers.Authorization).toBe('Bearer pk_live_x:sk_live_y');
     expect(call?.init.headers.Accept).toBe('application/json');
     expect(call?.init.headers['Content-Type']).toBe('application/json');
-    expect(call?.init.headers['User-Agent']).toMatch(/^payhub-node\//);
+    expect(call?.init.headers['User-Agent']).toMatch(
+      /^barkapay-payhub-node\/\d+\.\d+\.\d+/,
+    );
     expect(call?.init.headers['X-Request-Id']).toBeTruthy();
 
     expect(call?.init.body).toBeDefined();
@@ -54,7 +56,12 @@ describe('PayHub client', () => {
 
   it('overrides the country per call', async () => {
     const http = new FakeFetch([jsonResponse(200, { status: 'success', data: {} })]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     await client.ping('sn');
 
@@ -63,7 +70,12 @@ describe('PayHub client', () => {
 
   it('forgives an accidental "Bearer " prefix', async () => {
     const http = new FakeFetch([jsonResponse(200, { status: 'success', data: {} })]);
-    const client = new PayHub({ apiKey: 'Bearer k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'Bearer k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     await client.ping();
 
@@ -98,7 +110,12 @@ describe('PayHub client', () => {
         meta: { current_page: 1, last_page: 1, per_page: 50, total: 2 },
       }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     const list = await client.payments.list({ status: 'SUCCESSFUL', per_page: 50 });
 
@@ -116,7 +133,12 @@ describe('PayHub client', () => {
         data: { payments: [{ public_id: 'pay_42', status: 'PROCESSING_OPERATOR' }] },
       }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     const payment = await client.payments.get('pay_42');
 
@@ -133,25 +155,41 @@ describe('PayHub client', () => {
       }),
       jsonResponse(200, { status: 'success', data: {} }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     const confirmed = await client.payments.confirmOtp('pay_1', '123456');
     expect(confirmed.status).toBe('SUCCESSFUL');
-    expect(http.calls[0]?.url).toBe('https://hub.barkapay.com/bf/v1/payments/pay_1/confirm-otp');
+    expect(http.calls[0]?.url).toBe(
+      'https://hub.barkapay.com/bf/v1/payments/pay_1/confirm-otp',
+    );
     expect(JSON.parse(http.calls[0]?.init.body ?? '{}').otp).toBe('123456');
 
     await expect(client.payments.resendOtp('pay_1')).resolves.toBeUndefined();
-    expect(http.calls[1]?.url).toBe('https://hub.barkapay.com/bf/v1/payments/pay_1/resend-otp');
+    expect(http.calls[1]?.url).toBe(
+      'https://hub.barkapay.com/bf/v1/payments/pay_1/resend-otp',
+    );
   });
 
   it('creates and hydrates a transfer', async () => {
     const http = new FakeFetch([
       jsonResponse(201, {
         status: 'success',
-        data: { transfer: { public_id: 'xfer_1', status: 'PROCESSING_OPERATOR', amount: 50000 } },
+        data: {
+          transfer: { public_id: 'xfer_1', status: 'PROCESSING_OPERATOR', amount: 50000 },
+        },
       }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     const transfer = await client.transfers.create({
       operator: 'ORANGE',
@@ -178,7 +216,12 @@ describe('PayHub client', () => {
         },
       }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 0, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
 
     const balance = await client.balance.get();
 
@@ -187,12 +230,158 @@ describe('PayHub client', () => {
     expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/balance');
   });
 
+  it('keeps the OTP a string end to end (a leading zero is significant)', async () => {
+    const http = new FakeFetch([
+      jsonResponse(200, {
+        status: 'success',
+        data: { payment: { public_id: 'pay_1', status: 'SUCCESSFUL' } },
+      }),
+      jsonResponse(200, {
+        status: 'success',
+        data: { payment: { public_id: 'pay_2', status: 'SUCCESSFUL' } },
+      }),
+    ]);
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
+
+    await client.payments.create({
+      operator: 'ORANGE',
+      phone_number: '70123456',
+      amount: 100,
+      otp: '012345',
+      order: { id: 'O-1' },
+    });
+    expect(http.calls[0]?.init.body).toContain('"otp":"012345"');
+
+    await client.payments.confirmOtp('pay_2', '000042');
+    expect(http.calls[1]?.init.body).toBe('{"otp":"000042"}');
+  });
+
+  it('returns the first match when several payments share an order id', async () => {
+    const http = new FakeFetch([
+      jsonResponse(200, {
+        status: 'success',
+        data: {
+          payments: [
+            { public_id: 'first', order_id: 'O-1', status: 'FAILED' },
+            { public_id: 'second', order_id: 'O-1', status: 'SUCCESSFUL' },
+          ],
+        },
+        meta: { count: 2, lookup_field: 'order_id' },
+      }),
+    ]);
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
+
+    const payment = await client.payments.get('O-1');
+    expect(payment.publicId).toBe('first');
+  });
+
+  it('throws NotFoundError when a lookup succeeds with no row', async () => {
+    const http = new FakeFetch([
+      jsonResponse(200, { status: 'success', data: { transfers: [] } }),
+    ]);
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
+
+    await expect(client.transfers.get('X-1')).rejects.toMatchObject({
+      name: 'NotFoundError',
+      httpStatus: 404,
+    });
+  });
+
+  it('fails loudly when a creation succeeds without the created resource', async () => {
+    const http = new FakeFetch([jsonResponse(201, { status: 'success', data: {} })]);
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
+
+    await expect(
+      client.transfers.create({
+        operator: 'ORANGE',
+        phone_number: '70123456',
+        amount: 100,
+        order: { id: 'X-1' },
+      }),
+    ).rejects.toThrow('`data.transfer` is missing');
+  });
+
+  it('returns ping / me / operators data as sent by the API', async () => {
+    const http = new FakeFetch([
+      jsonResponse(200, { status: 'success', data: { version: '2.0.0' } }),
+      jsonResponse(200, {
+        status: 'success',
+        data: {
+          merchant: { public_id: 'M-1', name: 'Shop', country: 'BF' },
+          api_app: { label: 'app', scopes: ['payments:create'] },
+        },
+      }),
+      jsonResponse(200, {
+        status: 'success',
+        data: {
+          operators: { BFA: { ORANGE: { otp_required: true, min_amount: 100 } } },
+          supported_countries: ['BFA'],
+        },
+      }),
+      jsonResponse(200, {
+        status: 'success',
+        data: {
+          operational: true,
+          services: {
+            BFA: { ORANGE: { payment: { status: 'operational', updated_at: null } } },
+          },
+        },
+      }),
+    ]);
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 0,
+      fetch: http.fn,
+    });
+
+    expect((await client.ping()).version).toBe('2.0.0');
+    expect((await client.me()).api_app?.scopes).toEqual(['payments:create']);
+    const info = await client.operators.info();
+    expect(info.operators?.BFA?.ORANGE?.otp_required).toBe(true);
+    expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/operators/info');
+    const availability = await client.operators.availability();
+    expect(availability.services?.BFA?.ORANGE?.payment?.status).toBe('operational');
+    expect(http.lastCall?.url).toBe(
+      'https://hub.barkapay.com/bf/v1/operators/availability',
+    );
+  });
+
   it('retries on 503 then succeeds', async () => {
     const http = new FakeFetch([
-      jsonResponse(503, { status: 'error', code: 'service_unavailable', message: 'down' }),
+      jsonResponse(503, {
+        status: 'error',
+        code: 'service_unavailable',
+        message: 'down',
+      }),
       jsonResponse(200, { status: 'success', data: {} }),
     ]);
-    const client = new PayHub({ apiKey: 'k:s', country: 'bf', maxRetries: 1, fetch: http.fn });
+    const client = new PayHub({
+      apiKey: 'k:s',
+      country: 'bf',
+      maxRetries: 1,
+      fetch: http.fn,
+    });
 
     await client.ping();
 
