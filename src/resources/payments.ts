@@ -9,7 +9,7 @@ import type {
   PaymentList,
   PaymentListParams,
 } from '../types';
-import { expectResource } from './shared';
+import { expectResource, expectRows } from './shared';
 
 export class Payments {
   readonly #api: ApiClient;
@@ -58,6 +58,7 @@ export class Payments {
       country: options.country,
       query: filters,
     });
+    expectRows(env, 'payments');
     return hydratePaymentList(env);
   }
 
@@ -76,6 +77,7 @@ export class Payments {
         country: options.country,
       },
     );
+    expectRows(env, 'payments');
     const row = firstRow(env, 'payments');
     if (row === null) {
       throw new NotFoundError(`No payment found for "${id}".`, {
@@ -111,7 +113,7 @@ export class Payments {
     await this.#api.request(
       'POST',
       `payments/${pathSegment(publicId, 'payment id')}/resend-otp`,
-      { country: options.country },
+      { country: options.country, allowEmpty: true },
     );
   }
 }

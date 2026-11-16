@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ApiError, PayHub } from '../src/index';
-import { FakeFetch, ok, type Reply } from './fakeFetch';
+import { FakeFetch, jsonResponse, ok, textResponse, type Reply } from './fakeFetch';
 
 /** A link exactly as GET /{cc}/v1/payments/links/{id} returns it. */
 const LINK = {
@@ -254,37 +254,42 @@ describe('paymentLinks', () => {
     });
   });
 
-  it('retries the idempotent mutations on a network failure, never the creation', async () => {
+  it('never replays a link write on a network failure or a 5xx, only on a 429', async () => {
     const reset = new Error('socket hang up');
-
-    for (const run of [
+    const writes = [
+      (p: PayHub) => p.paymentLinks.create({ title: 't', amount: { type: 'open' } }),
       (p: PayHub) => p.paymentLinks.update('PL-1', { title: 't' }),
       (p: PayHub) => p.paymentLinks.cancel('PL-1'),
       (p: PayHub) => p.paymentLinks.pause('PL-1'),
       (p: PayHub) => p.paymentLinks.resume('PL-1'),
-    ]) {
-      const http = new FakeFetch([reset, ok({ payment_link: LINK })]);
+    ];
+    const make = (replies: ConstructorParameters<typeof FakeFetch>[0]) => {
+      const http = new FakeFetch(replies);
       const payhub = new PayHub({
         apiKey: 'k_id:s_secret',
         country: 'bf',
-        maxRetries: 1,
+        maxRetries: 2,
         fetch: http.fn,
       });
+      return { http, payhub };
+    };
+
+    for (const run of writes) {
+      for (const first of [reset, textResponse(503, '{}'), textResponse(502, '')]) {
+        const { http, payhub } = make([first, ok({ payment_link: LINK })]);
+        await expect(run(payhub)).rejects.toBeInstanceOf(Error);
+        expect(http.calls).toHaveLength(1);
+      }
+
+      const limited = jsonResponse(
+        429,
+        { status: 'error', code: 'too_many_requests' },
+        { 'retry-after': '0' },
+      );
+      const { http, payhub } = make([limited, ok({ payment_link: LINK })]);
       await run(payhub);
       expect(http.calls).toHaveLength(2);
     }
-
-    const http = new FakeFetch([reset, ok({ payment_link: LINK })]);
-    const payhub = new PayHub({
-      apiKey: 'k_id:s_secret',
-      country: 'bf',
-      maxRetries: 1,
-      fetch: http.fn,
-    });
-    await expect(
-      payhub.paymentLinks.create({ title: 't', amount: { type: 'open' } }),
-    ).rejects.toThrow('failed to complete');
-    expect(http.calls).toHaveLength(1);
   });
 
   it('fails loudly when a success response carries no link', async () => {

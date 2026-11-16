@@ -28,7 +28,7 @@ export function normalizeCountry(value: unknown): string {
  *
  * `encodeURIComponent` alone is not enough: it leaves `.` and `..` untouched,
  * and URL normalisation would then climb out of the intended path. Empty
- * values, dot segments, control characters and `/` are refused outright (the
+ * values, dot segments, control characters, `?`, `#` and `/` are refused (the
  * API cannot route an encoded slash, so such a lookup could only ever fail).
  *
  * @internal
@@ -49,6 +49,11 @@ export function pathSegment(value: unknown, label: string): string {
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001f\u007f]/.test(value)) {
     throw new ConfigurationError(`The ${label} must not contain control characters.`);
+  }
+  if (value.includes('?') || value.includes('#')) {
+    throw new ConfigurationError(
+      `The ${label} must not contain "?" or "#": no barkapay identifier does.`,
+    );
   }
   if (value.includes('/')) {
     throw new ConfigurationError(

@@ -33,7 +33,8 @@ const HEX_SHA256 = /^[0-9a-f]{64}$/i;
  * does not have the same bytes and will never verify — see the README.
  *
  * @returns `true` when the signature is valid, `false` otherwise.
- * @throws {ConfigurationError} when called with a parsed body or without a secret.
+ * @throws {ConfigurationError} when called with a parsed body, without a secret
+ *   or with a tolerance that is not a positive number of seconds.
  */
 export function verifyWebhookSignature(
   payload: WebhookPayload,
@@ -94,8 +95,11 @@ function assertSignature(
       'A webhook secret (whsec_…) is required to verify signatures.',
     );
   }
-  if (typeof tolerance !== 'number' || Number.isNaN(tolerance)) {
-    throw new ConfigurationError('`toleranceSeconds` must be a number.');
+  if (typeof tolerance !== 'number' || !Number.isFinite(tolerance) || tolerance <= 0) {
+    // 0, a negative value, NaN or Infinity would switch the replay window off.
+    throw new ConfigurationError(
+      '`toleranceSeconds` must be a positive, finite number of seconds (default 300).',
+    );
   }
 
   const parsed = parseHeader(header);
@@ -128,9 +132,8 @@ function assertSignature(
   }
 
   // Checked after the signature, so only an authentic delivery can be told
-  // "too old". A tolerance of 0 (or less) switches the replay window off —
-  // not recommended.
-  if (tolerance > 0 && Math.abs(Math.floor(Date.now() / 1000) - timestamp) > tolerance) {
+  // "too old".
+  if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > tolerance) {
     throw new SignatureVerificationError(
       'Webhook timestamp is outside the tolerance window.',
     );

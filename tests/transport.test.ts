@@ -59,7 +59,7 @@ describe('retries — idempotent requests', () => {
     expect(sleeps).toHaveLength(1);
   });
 
-  it.each([408, 429, 502, 503, 504])('retries a GET on HTTP %i', async (status) => {
+  it.each([429, 502, 503, 504])('retries a GET on HTTP %i', async (status) => {
     const { api, http } = harness([
       jsonResponse(status, { status: 'error', code: 'x', message: 'x' }),
       ok({}),
@@ -190,6 +190,35 @@ describe('retries — requests that create something or move money', () => {
     expect(http.calls).toHaveLength(2);
     expect(sleeps).toEqual([2000]);
   });
+
+  it('replays a write on 429 only when Retry-After is 10 s or less', async () => {
+    const ten = harness([throttled('10'), ok({ fine: true })], { random: () => 0 });
+    await ten.api.request('POST', 'payments', { body: {} });
+    expect(ten.http.calls).toHaveLength(2);
+    expect(ten.sleeps).toEqual([10000]);
+
+    const eleven = harness([throttled('11'), ok({ fine: true })]);
+    const error = await eleven.api
+      .request('POST', 'payments', { body: {} })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect((error as RateLimitError).retryAfter).toBe(11);
+    expect(eleven.http.calls).toHaveLength(1);
+    expect(eleven.sleeps).toEqual([]);
+  });
+
+  it.each(['PATCH', 'DELETE', 'POST'])(
+    'does NOT replay a %s on a network failure, a timeout or a 5xx',
+    async (method) => {
+      for (const first of [new Error('reset'), unavailable, textResponse(502, '')]) {
+        const { api, http } = harness([first, ok({})]);
+        await expect(api.request(method, 'payments/links/PL-1')).rejects.toBeInstanceOf(
+          Error,
+        );
+        expect(http.calls).toHaveLength(1);
+      }
+    },
+  );
 
   it('retries an explicitly idempotent mutation on a network failure', async () => {
     const { api, http } = harness([new Error('reset'), ok({})]);
@@ -324,10 +353,67 @@ describe('responses', () => {
     expect(error.httpStatus).toBe(200);
   });
 
-  it('accepts an empty 2xx body', async () => {
+  it('accepts an empty 2xx body only where the call allows it', async () => {
     const { api } = harness([textResponse(200, '')]);
 
-    await expect(api.request('POST', 'payments/p/resend-otp')).resolves.toEqual({});
+    await expect(
+      api.request('POST', 'payments/p/resend-otp', { allowEmpty: true }),
+    ).resolves.toEqual({});
+  });
+
+  it.each([
+    ['empty', ''],
+    ['blank', '  \n'],
+    ['HTML', '<html>maintenance</html>'],
+    ['a JSON list', '[]'],
+  ])('refuses a 2xx with a %s body instead of returning {}', async (_label, body) => {
+    const { api } = harness([textResponse(200, body)]);
+
+    const error = (await api
+      .request('POST', 'payments', { body: {} })
+      .catch((e: unknown) => e)) as ApiError;
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.code).toBe('invalid_response');
+    expect(error.message).toContain('order id');
+  });
+
+  it.each([
+    ['ping', (p: PayHub) => p.ping()],
+    ['me', (p: PayHub) => p.me()],
+    ['balance.get', (p: PayHub) => p.balance.get()],
+    ['operators.info', (p: PayHub) => p.operators.info()],
+    ['operators.availability', (p: PayHub) => p.operators.availability()],
+    ['payments.list', (p: PayHub) => p.payments.list()],
+    ['transfers.list', (p: PayHub) => p.transfers.list()],
+    ['paymentLinks.list', (p: PayHub) => p.paymentLinks.list()],
+  ])(
+    '%s: a success envelope without `data` is an error, not an empty result',
+    async (_n, run) => {
+      const http = new FakeFetch([
+        jsonResponse(200, { status: 'success', code: 'success' }),
+      ]);
+      const payhub = new PayHub({
+        apiKey: 'k_id:s_secret',
+        country: 'bf',
+        fetch: http.fn,
+      });
+
+      await expect(run(payhub)).rejects.toMatchObject({ code: 'invalid_response' });
+    },
+  );
+
+  it.each([
+    ['payments.list', (p: PayHub) => p.payments.list()],
+    ['payments.get', (p: PayHub) => p.payments.get('ORDER-1')],
+    ['transfers.list', (p: PayHub) => p.transfers.list()],
+    ['transfers.get', (p: PayHub) => p.transfers.get('ORDER-1')],
+    ['paymentLinks.list', (p: PayHub) => p.paymentLinks.list()],
+    ['paymentLinks.listPayments', (p: PayHub) => p.paymentLinks.listPayments('PL-1')],
+  ])('%s: a list missing from `data` is an error, never "no result"', async (_n, run) => {
+    const http = new FakeFetch([ok({ unrelated: 1 })]);
+    const payhub = new PayHub({ apiKey: 'k_id:s_secret', country: 'bf', fetch: http.fn });
+
+    await expect(run(payhub)).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('treats an error envelope as an error even on HTTP 200', async () => {
@@ -381,6 +467,47 @@ describe('responses', () => {
     await expect(api.request('GET', 'payments')).rejects.toMatchObject({
       retryAfter: 12,
     });
+  });
+
+  it('exposes the rate-limit headers and the request id on a 429', async () => {
+    const { api } = harness(
+      [
+        jsonResponse(
+          429,
+          { status: 'error', code: 'too_many_requests', message: 'slow down' },
+          {
+            'Retry-After': '10',
+            'X-RateLimit-Limit': '30',
+            'X-RateLimit-Remaining': '0',
+            'X-Request-Id': 'req-hub',
+          },
+        ),
+      ],
+      { maxRetries: 0 },
+    );
+
+    const error = (await api
+      .request('POST', 'payments', { body: {} })
+      .catch((e: unknown) => e)) as RateLimitError;
+    expect(error).toBeInstanceOf(RateLimitError);
+    expect(error.retryAfter).toBe(10);
+    expect(error.headers).toEqual({
+      'retry-after': '10',
+      'x-ratelimit-limit': '30',
+      'x-ratelimit-remaining': '0',
+      'x-request-id': 'req-hub',
+    });
+    expect(error.requestId).toBe('req-hub');
+  });
+
+  it('puts the sent request id on a NetworkError', async () => {
+    const { api, http } = harness([new Error('reset')], { maxRetries: 0 });
+
+    const error = (await api
+      .request('POST', 'payments', { body: {} })
+      .catch((e: unknown) => e)) as NetworkError;
+    expect(error).toBeInstanceOf(NetworkError);
+    expect(error.requestId).toBe(http.lastCall?.init.headers['X-Request-Id']);
   });
 
   it('reads headers from a plain-object transport too', async () => {

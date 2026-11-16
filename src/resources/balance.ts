@@ -1,7 +1,7 @@
 import type { ApiClient } from '../apiClient';
 import { hydrateBalance } from '../dto';
 import type { Balance, CallOptions } from '../types';
-import { coerceObject } from '../util';
+import { expectData } from './shared';
 
 export class BalanceResource {
   readonly #api: ApiClient;
@@ -13,6 +13,6 @@ export class BalanceResource {
   /** The merchant's wallet balance for the country. */
   async get(options: CallOptions = {}): Promise<Balance> {
     const env = await this.#api.request('GET', 'balance', { country: options.country });
-    return hydrateBalance(coerceObject(env, 'data') ?? {});
+    return hydrateBalance(expectData(env));
   }
 }

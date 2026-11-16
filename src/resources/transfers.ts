@@ -9,7 +9,7 @@ import type {
   TransferList,
   TransferListParams,
 } from '../types';
-import { expectResource } from './shared';
+import { expectResource, expectRows } from './shared';
 
 export class Transfers {
   readonly #api: ApiClient;
@@ -55,6 +55,7 @@ export class Transfers {
       country: options.country,
       query: filters,
     });
+    expectRows(env, 'transfers');
     return hydrateTransferList(env);
   }
 
@@ -73,6 +74,7 @@ export class Transfers {
         country: options.country,
       },
     );
+    expectRows(env, 'transfers');
     const row = firstRow(env, 'transfers');
     if (row === null) {
       throw new NotFoundError(`No transfer found for "${id}".`, {

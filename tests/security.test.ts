@@ -247,9 +247,9 @@ describe('path injection', () => {
   it('encodes a legitimate order id as a single path segment', async () => {
     const { payhub, http } = client([ok({ payments: [{ public_id: 'p' }] })]);
 
-    await payhub.payments.get('CMD 2026#42?x=1&y=é%');
+    await payhub.payments.get('CMD 2026 x=1&y=é%');
     expect(http.lastCall?.url).toBe(
-      'https://hub.barkapay.com/bf/v1/payments/CMD%202026%2342%3Fx%3D1%26y%3D%C3%A9%25',
+      'https://hub.barkapay.com/bf/v1/payments/CMD%202026%20x%3D1%26y%3D%C3%A9%25',
     );
     // What the server will actually route: still exactly one segment after /payments/.
     expect(new URL(http.lastCall?.url ?? '').pathname.split('/')).toHaveLength(5);
@@ -321,7 +321,7 @@ describe('baseUrl', () => {
     );
   });
 
-  it('warns once about plain http outside of loopback, and never for loopback', () => {
+  it('accepts plain http for loopback hosts only, silently', () => {
     const warn = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
 
     new PayHub({ apiKey: API_KEY, country: 'bf', baseUrl: 'http://localhost:8080' });
@@ -329,11 +329,66 @@ describe('baseUrl', () => {
     new PayHub({ apiKey: API_KEY, country: 'bf', baseUrl: 'http://[::1]:8080' });
     expect(warn).not.toHaveBeenCalled();
 
-    new PayHub({ apiKey: API_KEY, country: 'bf', baseUrl: 'http://mock.internal:8080' });
-    new PayHub({ apiKey: API_KEY, country: 'bf', baseUrl: 'http://mock.internal:8080' });
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[1]).toMatchObject({ code: 'BARKAPAY_INSECURE_BASE_URL' });
+    for (const baseUrl of [
+      'http://mock.internal:8080',
+      'http://10.0.0.5',
+      'http://localhost.evil.example',
+      'http://127.0.0.1.nip.io',
+    ]) {
+      expect(() => new PayHub({ apiKey: API_KEY, country: 'bf', baseUrl })).toThrow(
+        ConfigurationError,
+      );
+    }
   });
+
+  it('refuses plain http to a barkapay host, even with a custom fetch', () => {
+    for (const baseUrl of [
+      'http://hub.barkapay.com',
+      'http://HUB.BARKAPAY.COM.',
+      'http://barkapay.com',
+    ]) {
+      expect(
+        () =>
+          new PayHub({
+            apiKey: API_KEY,
+            country: 'bf',
+            baseUrl,
+            fetch: new FakeFetch([]).fn,
+          }),
+      ).toThrow(ConfigurationError);
+    }
+  });
+
+  it('lets a custom fetch reach a plain-http mock, with one warning', () => {
+    const warn = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    const fetch = new FakeFetch([]).fn;
+
+    new PayHub({
+      apiKey: API_KEY,
+      country: 'bf',
+      baseUrl: 'http://mock.internal:8080',
+      fetch,
+    });
+    new PayHub({
+      apiKey: API_KEY,
+      country: 'bf',
+      baseUrl: 'http://mock.internal:8080',
+      fetch,
+    });
+    expect(warn.mock.calls.length).toBeLessThanOrEqual(1);
+  });
+
+  it.each([['a?b'], ['a#b'], ['?'], ['#']])(
+    'refuses an identifier containing ? or # (%j) before any request',
+    async (id) => {
+      const { payhub, http } = client([ok({ payments: [] })]);
+      await expect(payhub.payments.get(id)).rejects.toBeInstanceOf(ConfigurationError);
+      await expect(payhub.paymentLinks.cancel(id)).rejects.toBeInstanceOf(
+        ConfigurationError,
+      );
+      expect(http.calls).toHaveLength(0);
+    },
+  );
 });
 
 describe('options validation', () => {

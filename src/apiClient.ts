@@ -7,20 +7,34 @@ import { decodeEnvelope, isRecord } from './util';
 
 const BASE_DELAY_MS = 500;
 const MAX_DELAY_MS = 8_000;
-/** A `Retry-After` longer than this is handed back to the caller instead of slept on. */
-const MAX_RETRY_AFTER_SECONDS = 60;
+/**
+ * A `Retry-After` longer than this is handed back to the caller (as a
+ * `RateLimitError` carrying `retryAfter`) instead of slept on. The API asks
+ * for 10 s on a real 429; money is never sent from a call that has been
+ * asleep for longer.
+ */
+const MAX_RETRY_AFTER_SECONDS = 10;
+/** Response headers kept on every error (lower-cased names). */
+const KEPT_HEADERS = [
+  'retry-after',
+  'x-request-id',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+] as const;
 const REDACTED = '[redacted]';
 
 /**
  * When may a request be sent again automatically?
  *
- * - `idempotent`: sending it twice has the same effect as sending it once
- *   (every GET; update / cancel / pause / resume of a payment link). Retried on
- *   network failures, timeouts and 408 / 429 / 502 / 503 / 504.
- * - `rate-limit-only`: the request creates something or moves money. It is
- *   retried ONLY on 429, the one answer that proves the API refused it before
- *   doing any work. A timeout or a 5xx leaves the outcome unknown, and the API
- *   has no idempotency-key header: replaying could charge or pay twice.
+ * - `idempotent`: a read (GET/HEAD). Retried on network failures, timeouts
+ *   and 429 / 502 / 503 / 504.
+ * - `rate-limit-only`: every write (POST/PATCH/DELETE: create a payment, a
+ *   transfer or a link, confirm or resend an OTP, update / cancel / pause /
+ *   resume a link). Retried ONLY on 429, the one answer that proves the API
+ *   refused it before doing any work, and only when the wait it asks for is
+ *   at most 10 s. A timeout, a network error or a 5xx leaves the outcome
+ *   unknown, and the API has no idempotency-key header: replaying could
+ *   charge or pay twice.
  */
 export type RetryMode = 'idempotent' | 'rate-limit-only';
 
@@ -44,6 +58,8 @@ export interface RequestOptions {
   query?: Record<string, unknown> | null;
   /** Defaults to `idempotent` for GET/HEAD and `rate-limit-only` otherwise. */
   retry?: RetryMode;
+  /** Accept a 2xx with an empty body (endpoints that return nothing useful). */
+  allowEmpty?: boolean;
 }
 
 interface RawResponse {
@@ -51,6 +67,7 @@ interface RawResponse {
   text: string;
   retryAfter: number | null;
   requestId: string | null;
+  headers: Record<string, string>;
 }
 
 /** Internal marker for a request that produced no usable response. */
@@ -110,7 +127,7 @@ export class ApiClient {
   async request(
     method: string,
     path: string,
-    { country, body, query, retry }: RequestOptions = {},
+    { country, body, query, retry, allowEmpty = false }: RequestOptions = {},
   ): Promise<Record<string, unknown>> {
     const cc =
       country === undefined || country === null || country === ''
@@ -163,7 +180,7 @@ export class ApiClient {
           await this.#sleep(backoffMs(attempt, this.#random));
           continue;
         }
-        throw this.#networkError(failure, method, mode);
+        throw this.#networkError(failure, method, mode, requestId);
       }
 
       if (mayRetry && isRetryableStatus(response.status, mode)) {
@@ -174,7 +191,7 @@ export class ApiClient {
         }
       }
 
-      return handle(response, requestId);
+      return handle(response, requestId, allowEmpty);
     }
   }
 
@@ -215,11 +232,19 @@ export class ApiClient {
     const exchange = (async (): Promise<RawResponse> => {
       const response = await fetchFn(url, init);
       const text = await response.text();
+      const kept: Record<string, string> = {};
+      for (const name of KEPT_HEADERS) {
+        const value = readHeader(response, name);
+        if (value !== null) {
+          kept[name] = value;
+        }
+      }
       return {
         status: response.status,
         text,
-        retryAfter: parseRetryAfter(readHeader(response, 'retry-after')),
-        requestId: readHeader(response, 'x-request-id'),
+        retryAfter: parseRetryAfter(kept['retry-after'] ?? null),
+        requestId: kept['x-request-id'] ?? null,
+        headers: kept,
       };
     })();
     // If the deadline wins the race, the exchange rejects later (abort): mark
@@ -242,6 +267,7 @@ export class ApiClient {
     failure: TransportFailure,
     method: string,
     mode: RetryMode,
+    requestId: string,
   ): NetworkError {
     // A request that is not idempotent may have been processed even though no
     // response came back: say so, the caller must not blindly send it again.
@@ -253,7 +279,7 @@ export class ApiClient {
     if (failure.timedOut) {
       return new NetworkError(
         `The ${method} request timed out after ${this.#timeoutMs} ms.${hint}`,
-        { timedOut: true },
+        { timedOut: true, requestId },
       );
     }
 
@@ -266,7 +292,10 @@ export class ApiClient {
 
     // Keep the original error as `cause` for debugging — unless it quotes the
     // credentials, in which case it is dropped rather than leaked.
-    return new NetworkError(message, this.#isClean(reason) ? { cause: reason } : {});
+    return new NetworkError(
+      message,
+      this.#isClean(reason) ? { cause: reason, requestId } : { requestId },
+    );
   }
 
   #redact(text: string): string {
@@ -305,14 +334,18 @@ export class ApiClient {
   }
 }
 
-function handle(response: RawResponse, sentRequestId: string): Record<string, unknown> {
-  const { status, text, retryAfter } = response;
+function handle(
+  response: RawResponse,
+  sentRequestId: string,
+  allowEmpty: boolean,
+): Record<string, unknown> {
+  const { status, text, retryAfter, headers } = response;
   const requestId = response.requestId ?? sentRequestId;
 
   if (status >= 300 && status < 400) {
     throw new ApiError(
       `Unexpected redirect (HTTP ${status}). The SDK never follows redirects — check the base URL.`,
-      { httpStatus: status, requestId },
+      { httpStatus: status, requestId, headers },
     );
   }
 
@@ -320,16 +353,21 @@ function handle(response: RawResponse, sentRequestId: string): Record<string, un
   const envStatus = envelope?.status;
 
   if (status < 200 || status >= 400 || envStatus === 'error' || envStatus === 'failed') {
-    throw ApiError.fromEnvelope(status, envelope ?? {}, requestId, retryAfter);
+    throw ApiError.fromEnvelope(status, envelope ?? {}, requestId, retryAfter, headers);
   }
 
   if (envelope === null) {
-    if (text.trim() === '') {
+    if (allowEmpty && text.trim() === '') {
       return {};
     }
+    // A 2xx whose body is not the JSON envelope (empty, HTML from a proxy,
+    // truncated) is not an answer: never hand back an empty object as a
+    // success. The request WAS accepted, though — after a create call the
+    // outcome is unknown, not refused.
     throw new ApiError(
-      `Unexpected response (HTTP ${status}): the body is not a JSON object.`,
-      { httpStatus: status, requestId },
+      `Unexpected response (HTTP ${status}): the body is not a JSON object. ` +
+        'The request was accepted: after a create call, look it up by your order id before sending it again.',
+      { code: 'invalid_response', httpStatus: status, requestId, headers },
     );
   }
 
@@ -343,7 +381,7 @@ function isRetryableStatus(status: number, mode: RetryMode): boolean {
   if (mode !== 'idempotent') {
     return false;
   }
-  return status === 408 || status === 502 || status === 503 || status === 504;
+  return status === 502 || status === 503 || status === 504;
 }
 
 /** Exponential backoff with jitter: between 50 % and 100 % of `BASE × 2^attempt`, capped. */
