@@ -442,6 +442,23 @@ export interface PaymentCreateParams {
    * Always a string: a leading zero is significant.
    */
   otp?: string;
+  /**
+   * Where an operator that redirects the payer (WAVE in Sénégal today) sends
+   * them back after the payment; other operators accept and ignore it.
+   * Absolute `https` URL, at most 2000 characters, without credentials or
+   * `#fragment` — otherwise the API answers 422 (`ValidationError`,
+   * `errors.return_url`). Left out: the URL set on your API application, else
+   * a barkapay page. The API appends `payment_id` and `order_id` to the query
+   * string, never a status: **the payer coming back is not a proof of
+   * payment** — wait for the webhook or call `payments.get()`. Not echoed back
+   * on the payment.
+   */
+  return_url?: string | null;
+  /**
+   * Where the payer goes after a failure or a cancellation (falls back on
+   * `return_url`). Same rules as `return_url`; `errors.cancel_url` on a 422.
+   */
+  cancel_url?: string | null;
   [key: string]: unknown;
 }
 

@@ -342,4 +342,42 @@ describe('payments.create — always a direct payment', () => {
     expect(http.calls).toHaveLength(1);
     expect(http.lastCall?.url).toBe('https://hub.barkapay.com/bf/v1/payments');
   });
+
+  it('sends return_url and cancel_url when given', async () => {
+    const { barkapay, http } = client([
+      ok(
+        { payment: { public_id: 'p-1', status: 'PROCESSING_OPERATOR' } },
+        undefined,
+        202,
+      ),
+    ]);
+
+    await barkapay.payments.create(
+      {
+        ...DIRECT,
+        operator: 'WAVE',
+        return_url: 'https://shop.example/thanks?cart=42',
+        cancel_url: 'https://shop.example/cart',
+      },
+      { country: 'sn' },
+    );
+
+    expect(http.lastCall?.url).toBe('https://hub.barkapay.com/sn/v1/payments');
+    expect(http.body()).toMatchObject({
+      return_url: 'https://shop.example/thanks?cart=42',
+      cancel_url: 'https://shop.example/cart',
+    });
+  });
+
+  it('leaves return_url and cancel_url out of the body when not given', async () => {
+    const { barkapay, http } = client([
+      ok({ payment: { public_id: 'p-1', status: 'SUCCESSFUL' } }),
+    ]);
+
+    await barkapay.payments.create(DIRECT);
+
+    const body = http.body();
+    expect(body).not.toHaveProperty('return_url');
+    expect(body).not.toHaveProperty('cancel_url');
+  });
 });

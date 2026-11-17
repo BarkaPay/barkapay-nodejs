@@ -61,6 +61,41 @@ describe('error mapping', () => {
     });
   });
 
+  it('exposes a refused return_url / cancel_url per field', async () => {
+    const client = clientReturning(
+      jsonResponse(422, {
+        status: 'failed',
+        code: 'validation_error',
+        message: 'The return url must be a valid absolute URL using the https scheme.',
+        errors: {
+          return_url: [
+            'The return url must be a valid absolute URL using the https scheme.',
+          ],
+          cancel_url: ['The cancel url must not contain a fragment (#…).'],
+        },
+      }),
+    );
+
+    const error = await client.payments
+      .create({
+        ...PAYMENT,
+        return_url: 'http://shop.example',
+        cancel_url: 'https://shop.example/#x',
+      })
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect(error).toMatchObject({
+      httpStatus: 422,
+      code: 'validation_error',
+      errors: {
+        return_url: [
+          'The return url must be a valid absolute URL using the https scheme.',
+        ],
+        cancel_url: ['The cancel url must not contain a fragment (#…).'],
+      },
+    });
+  });
+
   it('maps a malformed-body 400 (invalid_input) to ValidationError', async () => {
     const client = clientReturning(
       jsonResponse(400, {
