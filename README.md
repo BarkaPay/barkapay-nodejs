@@ -140,6 +140,40 @@ List filters: `status`, `operator`, `phone_number`, `channel`, `order_id`, `page
 `per_page` (max 200), `amount` **with** `amount_operator` (`<`, `=`, `>`, `<=`, `>=`),
 and `from_date` **with** `to_date` (a date range needs both ends).
 
+### Sending the payer back to your site
+
+With an operator that redirects the payer (WAVE in Sénégal today), pass
+`return_url` and, optionally, `cancel_url` to choose where the payer lands
+afterwards. Other operators accept and ignore them.
+
+```ts
+const wave = await barkapay.payments.create(
+  {
+    operator: 'WAVE',
+    phone_number: payerPhone,
+    amount: 5000,
+    order: { id: orderId },
+    return_url: 'https://shop.example/thanks?cart=42', // after the payment
+    cancel_url: 'https://shop.example/cart', // after a failure or cancellation
+  },
+  { country: 'sn' },
+);
+console.log(wave.redirectUrl); // send the payer there
+```
+
+- Absolute `https` URLs only, at most 2000 characters, no `user:pass@`, no
+  `#fragment`: the API answers 422 otherwise (`ValidationError`, details in
+  `error.errors.return_url`).
+- Leave them out to use the URLs set on your API application, or a barkapay
+  page by default. Without `cancel_url`, a failed or cancelled payment goes back
+  to `return_url`.
+- The API appends `payment_id` and `order_id` to your URL (your query string is
+  kept), never a status. Neither field is returned on the payment.
+
+> **The payer coming back is not a proof of payment.** Anyone can open that URL.
+> Fulfil the order on the webhook, or after `barkapay.payments.get(paymentId)`
+> says `SUCCESSFUL`.
+
 ## Payment links
 
 A payment link is a page on the barkapay-hosted checkout: your customer opens it,

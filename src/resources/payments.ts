@@ -24,6 +24,10 @@ export class Payments {
    * up-front, `otp`. Branch on the returned `status` (`SUCCESSFUL`,
    * `AWAITING_OTP`, `PROCESSING_OPERATOR`…).
    *
+   * Optional `return_url` / `cancel_url`: where an operator that redirects the
+   * payer (WAVE in Sénégal) sends them back. Only sent when given; validated
+   * by the API (422 `ValidationError`). The return is not a proof of payment.
+   *
    * This is always a direct payment. For a hosted checkout page where the
    * payer chooses how to pay, use `paymentLinks.create`.
    *
