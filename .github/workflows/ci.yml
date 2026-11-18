@@ -74,7 +74,7 @@ jobs:
         run: npm ci
 
       - name: Dependency audit
-        run: npm audit
+        run: node scripts/audit.mjs
 
       - name: Registry signatures of the installed packages
         run: npm audit signatures

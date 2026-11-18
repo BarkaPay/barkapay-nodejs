@@ -25,6 +25,10 @@ npm run test:smoke    # the built package against a loopback server, real fetch
 installs the packed tarball and runs the smoke tests on Node 18, 20, 22 and 24 —
 that is how Node 18 support is verified even though the dev tools no longer run on it.
 
+CI and the release workflow also run `node scripts/audit.mjs`: the runtime dependencies
+(none today) must have no known advisory at all, and the dev tooling none except those
+listed, with their reason, at the top of that script.
+
 ## Scope & conventions
 
 - The SDK mirrors the public API — keep the surface in sync with it, and with the
