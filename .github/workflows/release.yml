@@ -103,7 +103,7 @@ jobs:
         run: npm ci
 
       - name: Dependency audit
-        run: npm audit
+        run: node scripts/audit.mjs
 
       - name: Lint (eslint)
         run: npm run lint

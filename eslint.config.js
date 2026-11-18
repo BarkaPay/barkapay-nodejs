@@ -32,8 +32,9 @@ export default tseslint.config(
     },
   },
   {
-    // Runtime smoke tests: plain Node scripts, CommonJS or ESM, no TypeScript.
-    files: ['smoke/**/*.cjs', 'smoke/**/*.mjs'],
+    // Runtime smoke tests and repository scripts: plain Node, CommonJS or ESM, no
+    // TypeScript.
+    files: ['smoke/**/*.cjs', 'smoke/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: {
         ...nodeGlobals,
