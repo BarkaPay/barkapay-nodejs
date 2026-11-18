@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
-## [2.0.0] - 2026-11-16
+## [2.0.0] - 2026-11-18
 
 The SDK takes its final name. 2.0 is a pure rename of 1.1.0: same resources,
 same methods, same retry rules (reads replayed on 429 / 502 / 503 / 504 and
